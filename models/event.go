@@ -1,15 +1,21 @@
 package models
 
 import "time"
-type Event struct{
-	ID string
-	Name string
-	Description string
-	Location string
-	UserId string
-	DateTime time.Time
+
+// Event model
+type Event struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name" binding:"required"`
+	Description string    `json:"description" binding:"required"`
+	Location    string    `json:"location" binding:"required"`
+	UserId      string    `json:"user_id"`
+	DateTime    time.Time `json:"date_time"`
 }
-let events := []Event{} 
-func(e Event){
-event := append(events,e)
+
+// Global in-memory event storage
+var Events []Event
+
+// AddEvent save a new event to the in-memory storage
+func Save(e Event) {
+	Events = append(Events, e)
 }
