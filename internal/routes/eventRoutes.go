@@ -2,7 +2,7 @@ package routes
 
 import (
 	"github.com/FiraBro/local-go/internal/handlers"
-	"github.com/FiraBro/local-go/internal/middleware" // your JWT middleware
+	"github.com/FiraBro/local-go/internal/middlewares"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +14,7 @@ func SetupEventRoutes(r *gin.Engine, eventHandler *handlers.EventHandler) {
 
 	// Protected routes
 	authGroup := r.Group("/")
-	authGroup.Use(middleware.JWTAuth())
+	authGroup.Use(middlewares.JWTAuth())
 	{
 		authGroup.POST("/events", eventHandler.CreateEvent)
 		authGroup.PUT("/events/:id", eventHandler.UpdateEvent)
