@@ -2,12 +2,12 @@ package services
 
 import (
 	"errors"
+	"time"
+
 	"github.com/FiraBro/local-go/internal/config"
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
-	"time"
-
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 )
 
