@@ -65,3 +65,10 @@ func (r *EventRepository) Update(event *models.Event) error {
 	_, err := r.db.Exec(query, event.Name, event.Description, event.Location, event.UserId, event.DateTime, event.ID)
 	return err
 }
+
+// Delete removes an event by its ID
+func (r *EventRepository) Delete(id string) error {
+	query := `DELETE FROM events WHERE id = ?`
+	_, err := r.db.Exec(query, id)
+	return err
+}
