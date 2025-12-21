@@ -2,7 +2,6 @@ package models
 
 import "time"
 
-// Event model
 type Event struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name" binding:"required"`
@@ -10,12 +9,4 @@ type Event struct {
 	Location    string    `json:"location" binding:"required"`
 	UserId      string    `json:"user_id"`
 	DateTime    time.Time `json:"date_time"`
-}
-
-// Global in-memory event storage
-var Events []Event
-
-// AddEvent save a new event to the in-memory storage
-func (e Event) Save(){
-	Events = append(Events, e)
 }
