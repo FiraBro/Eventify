@@ -54,3 +54,14 @@ func (r *EventRepository) GetByID(id string) (*models.Event, error) {
 	e.DateTime, _ = time.Parse(time.RFC3339, dt)
 	return &e, nil
 }
+
+
+// Update updates an existing event by ID
+func (r *EventRepository) Update(event *models.Event) error {
+	query := `
+	UPDATE events 
+	SET name = ?, description = ?, location = ?, user_id = ?, date_time = ?
+	WHERE id = ?`
+	_, err := r.db.Exec(query, event.Name, event.Description, event.Location, event.UserId, event.DateTime, event.ID)
+	return err
+}
