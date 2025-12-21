@@ -6,21 +6,25 @@ import (
 	"github.com/FiraBro/local-go/internal/repositories"
 	"github.com/FiraBro/local-go/internal/routes"
 	"github.com/FiraBro/local-go/internal/services"
-
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	db.InitDB()
+    db.InitDB()
 
-	repo := repositories.NewEventRepository()
-	service := services.NewEventService(repo)
-	eventHandler := handlers.NewEventHandler(service)
-	authHandler := handlers.AuthHandler(service)
+    // Event routes
+    eventRepo := repositories.NewEventRepository()
+    eventService := services.NewEventService(eventRepo)
+    eventHandler := handlers.NewEventHandler(eventService)
 
-	r := gin.Default()
-	routes.SetupEventRoutes(r, eventHandler)
-	routes.SetupAuthRoutes(r, authHandler)
+    // Auth routes - SEPARATE service needed
+    authRepo := repositories.NewUserRepository()  // or whatever your auth repo is
+    authService := services.NewAuthService(authRepo)
+    authHandler := handlers.NewAuthHandler(authService)  // ✅ Correct
 
-	r.Run(":8080")
+    r := gin.Default()
+    routes.SetupEventRoutes(r, eventHandler)
+    routes.SetupAuthRoutes(r, authHandler)
+
+    r.Run(":8080")
 }
