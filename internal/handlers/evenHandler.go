@@ -1,0 +1,52 @@
+package handlers
+
+import (
+	"local-go/internal/models"
+	"local-go/internal/services"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+type EventHandler struct {
+	service *services.EventService
+}
+
+func NewEventHandler(service *services.EventService) *EventHandler {
+	return &EventHandler{service: service}
+}
+
+func (h *EventHandler) CreateEvent(c *gin.Context) {
+	var e models.Event
+	if err := c.ShouldBindJSON(&e); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	e.ID = uuid.New().String()
+	if err := h.service.CreateEvent(&e); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create event"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "Event created", "event": e})
+}
+
+func (h *EventHandler) GetEvents(c *gin.Context) {
+	events, err := h.service.GetAllEvents()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch events"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"events": events})
+}
+
+func (h *EventHandler) GetEventByID(c *gin.Context) {
+	id := c.Param("id")
+	event, err := h.service.GetEventByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"event": event})
+}
