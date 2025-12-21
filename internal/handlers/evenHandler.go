@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"local-go/internal/models"
-	"local-go/internal/services"
+	"github.com/FiraBro/local-go/internal/models"
+	"github.com/FiraBro/local-go/internal/services"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

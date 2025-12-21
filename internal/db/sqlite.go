@@ -2,7 +2,7 @@ package db
 
 import (
 	"database/sql"
-	"local-go/internal/config"
+	"github.com/FiraBro/local-go/internal/config"
 	"log"
 
 	_ "github.com/mattn/go-sqlite3"

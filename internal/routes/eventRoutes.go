@@ -1,21 +1,23 @@
 package routes
 
 import (
-	"local-go/internal/handlers"
+	"github.com/FiraBro/local-go/internal/handlers"
+	"github.com/FiraBro/local-go/internal/middleware" // your JWT middleware
 
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRoutes(r *gin.Engine, h *handlers.EventHandler) {
-	r.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{"message": "Event Booking API 🚀"})
-	})
+func SetupEventRoutes(r *gin.Engine, eventHandler *handlers.EventHandler) {
+	// Public routes
+	r.GET("/events", eventHandler.GetEvents)
+	r.GET("/events/:id", eventHandler.GetEventByID)
 
-	r.GET("/events", h.GetEvents)
-	r.GET("/events/:id", h.GetEventByID)
-	r.POST("/events", h.CreateEvent)
-	r.PUT("/events/:id", h.UpdateEvent)
-	r.DELETE("/events/:id", h.DeleteEvent)
-
-
+	// Protected routes
+	authGroup := r.Group("/")
+	authGroup.Use(middleware.JWTAuth())
+	{
+		authGroup.POST("/events", eventHandler.CreateEvent)
+		authGroup.PUT("/events/:id", eventHandler.UpdateEvent)
+		authGroup.DELETE("/events/:id", eventHandler.DeleteEvent)
+	}
 }

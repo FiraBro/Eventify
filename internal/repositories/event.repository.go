@@ -2,8 +2,8 @@ package repositories
 
 import (
 	"database/sql"
-	"local-go/internal/db"
-	"local-go/internal/models"
+	"github.com/FiraBro/local-go/internal/db"
+	"github.com/FiraBro/local-go/internal/models"
 	"time"
 )
 
@@ -54,7 +54,6 @@ func (r *EventRepository) GetByID(id string) (*models.Event, error) {
 	e.DateTime, _ = time.Parse(time.RFC3339, dt)
 	return &e, nil
 }
-
 
 // Update updates an existing event by ID
 func (r *EventRepository) Update(event *models.Event) error {

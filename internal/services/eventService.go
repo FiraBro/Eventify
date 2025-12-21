@@ -1,8 +1,8 @@
 package services
 
 import (
-	"local-go/internal/models"
-	"local-go/internal/repositories"
+	"github.com/FiraBro/local-go/internal/models"
+	"github.com/FiraBro/local-go/internal/repositories"
 )
 
 type EventService struct {
