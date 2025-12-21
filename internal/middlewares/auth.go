@@ -1,15 +1,14 @@
-package middleware
+package middlewares
 
 import (
-	"net/http",
-	"strings",
+	"net/http"
+	"strings"
 
-	"github.com/gin-gonic/gin",
-	"github.com/golang-jwt/jwt/v4",
 	"github.com/FiraBro/local-go/internal/config"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
 )
 
-// JWTAuth validates JWT token and adds user info to context
 func JWTAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -19,16 +18,16 @@ func JWTAuth() gin.HandlerFunc {
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token not provided"})
+		if tokenString == authHeader {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
 			return
 		}
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		token, err := jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrTokenMalformed
+				return nil, jwt.ErrSignatureInvalid
 			}
-			return config.JWTSecret, nil
+			return []byte(config.JWTSecret), nil
 		})
 
 		if err != nil || !token.Valid {
@@ -42,17 +41,27 @@ func JWTAuth() gin.HandlerFunc {
 			return
 		}
 
-		// Set user info in context for handlers
-		c.Set("user_id", claims["user_id"])
-		c.Set("role", claims["role"])
+		userID, ok := claims["user_id"].(string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing user_id"})
+			return
+		}
+
+		role, ok := claims["role"].(string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing role"})
+			return
+		}
+
+		c.Set("user_id", userID)
+		c.Set("role", role)
 		c.Next()
 	}
 }
 
-// AdminOnly ensures only admin users can access the route
 func AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, exists := c.Get("role")
+		role, exists := getStringFromContext(c, "role")
 		if !exists || role != "admin" {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
@@ -61,11 +70,15 @@ func AdminOnly() gin.HandlerFunc {
 	}
 }
 
-// OwnerOrAdmin checks if the current user is the owner of a resource or an admin
 func OwnerOrAdmin(getOwnerID func(c *gin.Context) string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := c.GetString("user_id")
-		role := c.GetString("role")
+		userID, exists := getStringFromContext(c, "user_id")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		role, _ := getStringFromContext(c, "role")
 		ownerID := getOwnerID(c)
 
 		if role != "admin" && userID != ownerID {
@@ -74,4 +87,13 @@ func OwnerOrAdmin(getOwnerID func(c *gin.Context) string) gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+func getStringFromContext(c *gin.Context, key string) (string, bool) {
+	iValue, exists := c.Get(key)
+	if !exists {
+		return "", false
+	}
+	sValue, ok := iValue.(string)
+	return sValue, ok
 }
