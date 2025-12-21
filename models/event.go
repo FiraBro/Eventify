@@ -16,6 +16,6 @@ type Event struct {
 var Events []Event
 
 // AddEvent save a new event to the in-memory storage
-func Save(e Event) {
+func (e Event) Save(){
 	Events = append(Events, e)
 }
