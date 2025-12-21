@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"local-go/db"
 	"local-go/models"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,7 @@ import (
 var events []models.Event
 
 func main() {
+	db.InitDb()
 	r := gin.Default()
 
 	// Health / test route
