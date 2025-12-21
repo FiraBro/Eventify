@@ -69,3 +69,14 @@ func (h *EventHandler) UpdateEvent(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Event updated successfully", "event": e})
 }
+
+func (h *EventHandler) DeleteEvent(c *gin.Context) {
+	id := c.Param("id")
+
+	if err := h.service.DeleteEvent(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete event"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Event deleted successfully"})
+}
