@@ -8,7 +8,7 @@ import (
 var (
 	ServerPort = getEnv("SERVER_PORT", "8080")
 	DBPath     = getEnv("DB_PATH", "./api.db")
-	JWTSecret  = getEnv("JWT_SECRET", "your-super-secret-key-min-32-chars-long")
+   JWTSecret = []byte(getEnv("JWT_SECRET", "my-first-go-jwt-secret-for-api-i-really-excited"))
 	JWTExpiry  = 24 * time.Hour  // ✅ FIXED: Use time.Hour directly
 )
 
