@@ -24,3 +24,7 @@ func (s *EventService) GetAllEvents() ([]models.Event, error) {
 func (s *EventService) GetEventByID(id string) (*models.Event, error) {
 	return s.repo.GetByID(id)
 }
+
+func (s *EventService) UpdateEvent(event *models.Event) error {
+	return s.repo.Update(event)
+}
