@@ -14,4 +14,6 @@ func SetupRoutes(r *gin.Engine, h *handlers.EventHandler) {
 	r.GET("/events", h.GetEvents)
 	r.GET("/events/:id", h.GetEventByID)
 	r.POST("/events", h.CreateEvent)
+	r.PUT("/events/:id", h.UpdateEvent)
+
 }
