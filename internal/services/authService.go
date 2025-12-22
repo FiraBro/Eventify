@@ -7,6 +7,7 @@ import (
 	"github.com/FiraBro/local-go/internal/config"
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
+	"github.com/FiraBro/local-go/internal/utils"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -124,17 +125,33 @@ func (s *AuthService) Logout(token string) error {
 // ----------------------------
 // FORGOT PASSWORD (OTP)
 // ----------------------------
-func (s *AuthService) ForgotPassword(email, otp string) error {
-	// Remove old OTPs
-	s.resetTokenRepo.Delete(email)
+func (s *AuthService) ForgotPassword(email string) error {
+	otp := utils.GenerateOTP()
+
+	// Delete old OTPs
+	if err := s.resetTokenRepo.Delete(email); err != nil {
+		return err
+	}
 
 	rt := &models.ResetToken{
 		Email:     email,
-		OTP:       otp,
+		OTP:       otp, // hash in production
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 	}
-	return s.resetTokenRepo.Save(rt)
+
+	if err := s.resetTokenRepo.Save(rt); err != nil {
+		return err
+	}
+
+	// Send email (can be async later)
+	if err := utils.SendOTPEmail(email, otp); err != nil {
+		return err
+	}
+
+	return nil
 }
+
+
 
 // ----------------------------
 // RESET PASSWORD
