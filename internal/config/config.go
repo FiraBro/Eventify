@@ -18,3 +18,9 @@ func getEnv(key, fallback string) string {
 	}
 	return fallback
 }
+
+func ValidateConfig() {
+	if len(JWTSecret) == 0 {
+		panic("❌ JWT_SECRET is not set")
+	}
+}
