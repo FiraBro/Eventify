@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/FiraBro/local-go/internal/models"
@@ -133,19 +134,29 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Valid email is required"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Valid email is required",
+		})
 		return
 	}
 
-	otp := uuid.New().String()[:6] // simple OTP, in production use random numeric OTP
-	if err := h.authService.ForgotPassword(body.Email, otp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate OTP"})
-		return
+	// Call business logic only
+	err := h.authService.ForgotPassword(body.Email)
+
+	if err != nil {
+		// Log internal error
+		log.Println("ForgotPassword:", err)
 	}
 
-	// TODO: Send OTP via email
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "OTP sent", "otp": otp})
+	// Always return success
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "If the email exists, OTP has been sent",
+	})
 }
+
+
 
 // ----------------------------
 // RESET PASSWORD
