@@ -8,7 +8,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// InitDB initializes SQLite and returns the DB connection
 func InitDB() *sql.DB {
 	db, err := sql.Open("sqlite3", config.DBPath)
 	if err != nil {
@@ -28,13 +27,14 @@ func InitDB() *sql.DB {
 		log.Fatal("❌ Failed to create events table:", err)
 	}
 
+	if err := createResetTokensTable(db); err != nil {
+		log.Fatal("❌ Failed to create reset_tokens table:", err)
+	}
+
 	log.Println("✅ SQLite connected and migrations applied")
 	return db
 }
 
-// ----------------------------
-// CREATE TABLES
-// ----------------------------
 func createUsersTable(db *sql.DB) error {
 	query := `
 	CREATE TABLE IF NOT EXISTS users (
@@ -60,6 +60,20 @@ func createEventsTable(db *sql.DB) error {
 		date_time DATETIME,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (user_id) REFERENCES users(id)
+	);`
+	_, err := db.Exec(query)
+	return err
+}
+
+func createResetTokensTable(db *sql.DB) error {
+	query := `
+	CREATE TABLE IF NOT EXISTS reset_tokens (
+		id TEXT PRIMARY KEY,
+		email TEXT NOT NULL,
+		otp TEXT NOT NULL,
+		expires_at DATETIME NOT NULL,
+		used INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	_, err := db.Exec(query)
 	return err
