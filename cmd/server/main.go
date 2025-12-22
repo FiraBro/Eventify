@@ -9,22 +9,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const version = "/api/v1"
+
 func main() {
-    db.InitDB()
+	dbConn := db.InitDB() // must return *sql.DB
 
-    // Event routes
-    eventRepo := repositories.NewEventRepository()
-    eventService := services.NewEventService(eventRepo)
-    eventHandler := handlers.NewEventHandler(eventService)
+	// Event routes
+	eventRepo := repositories.NewEventRepository(dbConn)
+	eventService := services.NewEventService(eventRepo)
+	eventHandler := handlers.NewEventHandler(eventService)
 
-    // Auth routes - SEPARATE service needed
-    authRepo := repositories.NewUserRepository()  // or whatever your auth repo is
-    authService := services.NewAuthService(authRepo)
-    authHandler := handlers.NewAuthHandler(authService)  // ✅ Correct
+	// Auth routes
+	authRepo := repositories.NewUserRepository(dbConn)
+	refreshRepo := repositories.NewRefreshTokenRepository(dbConn)
+	resetRepo := repositories.NewResetTokenRepository(dbConn)
+	authService := services.NewAuthService(authRepo, refreshRepo, resetRepo)
+	authHandler := handlers.NewAuthHandler(authService)
 
-    r := gin.Default()
-    routes.SetupEventRoutes(r, eventHandler)
-    routes.SetupAuthRoutes(r, authHandler)
+	r := gin.Default()
 
-    r.Run(":8080")
+	// Create a group for API versioning
+	api := r.Group(version)
+
+	// Register routes under the group
+	routes.SetupEventRoutes(api, eventHandler) // all event routes prefixed with /api/v1
+	routes.AuthRoutes(api, authHandler)       // all auth routes prefixed with /api/v1
+
+	r.Run(":8080")
 }
