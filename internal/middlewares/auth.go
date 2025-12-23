@@ -3,6 +3,7 @@ package middlewares
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/FiraBro/local-go/internal/config"
 	"github.com/FiraBro/local-go/internal/repositories"
@@ -10,12 +11,19 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
+// Typed JWT claims
+type Claims struct {
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
+}
+
 // AuthMiddleware verifies JWT and checks user existence & soft delete
 func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization required"})
 			return
 		}
 
@@ -25,9 +33,9 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 			return
 		}
 
-		// Parse JWT
-		token, err := jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		claims := &Claims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
 			}
 			return []byte(config.JWTSecret), nil
@@ -38,26 +46,14 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 			return
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
+		// Optional: check token expiry
+		if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
 			return
 		}
 
-		userID, ok := claims["user_id"].(string)
-		if !ok || userID == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing user_id"})
-			return
-		}
-
-		role, ok := claims["role"].(string)
-		if !ok || role == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing role"})
-			return
-		}
-
-		// ✅ Fetch user from DB and check soft delete
-		user, err := userRepo.GetActiveByID(userID)
+		// Fetch user from DB to validate soft deletion
+		user, err := userRepo.GetActiveByID(claims.UserID)
 		if err != nil || user.DeletedAt != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User no longer active"})
 			return
@@ -83,7 +79,7 @@ func AdminOnly() gin.HandlerFunc {
 	}
 }
 
-// OwnerOrAdmin ensures only owner of the resource or admin can access
+// OwnerOrAdmin ensures only owner or admin can access
 func OwnerOrAdmin(getOwnerID func(c *gin.Context) string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := getStringFromContext(c, "user_id")
