@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -219,7 +220,7 @@ func (s *AuthService) ResetPassword(email, otp, newPassword string) error {
 // FETCH USER
 // ----------------------------
 func (s *AuthService) FetchUser(id string) (*models.User, error) {
-	return s.userRepo.GetByID(id)
+	return s.userRepo.GetUserByID(id)
 }
 
 // ----------------------------
@@ -237,7 +238,7 @@ func (s *AuthService) UpdateProfile(id, username, email string) error {
 // CHANGE PASSWORD
 // ----------------------------
 func (s *AuthService) ChangePassword(id, oldPassword, newPassword string) error {
-	user, err := s.userRepo.GetByID(id)
+	user, err := s.userRepo.GetUserByID(id)
 	if err != nil {
 		return err
 	}
@@ -290,4 +291,84 @@ func (s *AuthService) PurgeExpiredDeletedUsers() {
 	if err := s.userRepo.PermanentlyDeleteExpired(); err != nil {
 		log.Println("⚠️ Failed to purge expired users:", err)
 	}
+}
+
+
+
+
+// Fetch paginated users
+func (s *AuthService) FetchUsersPaginated(pageStr, limitStr string) ([]models.User, int, int, error) {
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 10
+	}
+
+	users, err := s.userRepo.FetchUsersPaginated(page, limit)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	return users, page, limit, nil
+}
+
+// Update user role
+func (s *AuthService) UpdateUserRole(id, role string) error {
+	if id == "" || role == "" {
+		return errors.New("id and role cannot be empty")
+	}
+
+	return s.userRepo.UpdateUserRole(id, role)
+}
+
+
+
+
+// CreateUser handles hashing password and validating
+func (s *AuthService) CreateUser(user *models.User) error {
+	user.Email = strings.TrimSpace(strings.ToLower(user.Email))
+	if user.Email == "" || user.Password == "" || user.Username == "" {
+		return errors.New("username, email, and password are required")
+	}
+
+	// Check if user already exists
+	exists, err := s.userRepo.ExistsByEmail(user.Email)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return errors.New("email already registered")
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user.Password = string(hashedPassword)
+
+	// Default role
+	if user.Role == "" {
+		user.Role = "user"
+	}
+
+	return s.userRepo.CreateUser(user)
+}
+
+// UpdateUser handles updating user info (username, email, role)
+func (s *AuthService) UpdateUser(user *models.User) error {
+	user.Email = strings.TrimSpace(strings.ToLower(user.Email))
+	if user.Username == "" {
+		return errors.New("username cannot be empty")
+	}
+
+	if user.ID == "" {
+		return errors.New("user ID is required")
+	}
+
+	return s.userRepo.UpdateUser(user.ID, user)
 }
