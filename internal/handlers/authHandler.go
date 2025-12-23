@@ -24,27 +24,45 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var input models.User
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request payload"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request payload",
+		})
 		return
 	}
 
+	// Assign ID and default role
 	input.ID = uuid.New().String()
 	if input.Role == "" {
 		input.Role = "user"
 	}
 
+	// Call service
 	if err := h.authService.Register(&input); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to register user"})
+		// Log for server-side debugging
+		log.Println("Register error:", err)
+
+		// Return meaningful message to client
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "User registered", "data": gin.H{
-		"user_id":  input.ID,
-		"username": input.Username,
-		"email":    input.Email,
-		"role":     input.Role,
-	}})
+	// Success response
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"message": "User registered successfully",
+		"data": gin.H{
+			"user_id":  input.ID,
+			"username": input.Username,
+			"email":    input.Email,
+			"role":     input.Role,
+		},
+	})
 }
+
 
 // ----------------------------
 // LOGIN
@@ -56,13 +74,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
+		log.Println("❌ Login: invalid request body:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Email and password are required"})
 		return
 	}
 
 	accessToken, refreshToken, user, err := h.authService.Login(input.Email, input.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid email or password"})
+		log.Println("❌ Login failed:", err)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Invalid email or password",
+		})
 		return
 	}
 
@@ -134,29 +157,17 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Valid email is required",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Valid email is required"})
 		return
 	}
 
-	// Call business logic only
-	err := h.authService.ForgotPassword(body.Email)
+	_ = h.authService.ForgotPassword(body.Email)
 
-	if err != nil {
-		// Log internal error
-		log.Println("ForgotPassword:", err)
-	}
-
-	// Always return success
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "If the email exists, OTP has been sent",
 	})
 }
-
-
 
 // ----------------------------
 // RESET PASSWORD
@@ -185,7 +196,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 // GET PROFILE
 // ----------------------------
 func (h *AuthHandler) GetProfile(c *gin.Context) {
-	userID := c.GetString("user_id") // from JWT middleware
+	userID := c.GetString("user_id")
 	user, err := h.authService.FetchUser(userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User not found"})
@@ -240,10 +251,75 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.ChangePassword(userID, body.OldPassword, body.NewPassword); err != nil {
+	if err := h.authService.ChangePassword(userID, body. OldPassword, body.NewPassword); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Password changed successfully"})
+}
+
+// ----------------------------
+// SOFT DELETE USER (14-day restore)
+// ----------------------------
+func (h *AuthHandler) DeleteUser(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	err := h.authService.SoftDeleteUser(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to delete user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Your account has been scheduled for deletion. You have 14 days to restore it.",
+	})
+}
+
+// ----------------------------
+// RESTORE USER
+// ----------------------------
+func (h *AuthHandler) RestoreUser(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	err := h.authService.RestoreUser(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Account restored successfully",
+	})
+}
+
+// ----------------------------
+// FETCH ALL USERS (Admin only)
+// ----------------------------
+func (h *AuthHandler) FetchAllUsers(c *gin.Context) {
+	role := c.GetString("role")
+
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "Access denied",
+		})
+		return
+	}
+
+	users, err := h.authService.FetchAllUsers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to fetch users",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    users,
+	})
 }
