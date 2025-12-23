@@ -15,13 +15,24 @@ func NewRefreshTokenRepository(db *sql.DB) *RefreshTokenRepository {
 }
 
 func (r *RefreshTokenRepository) Save(token *models.RefreshToken) error {
-	_, err := r.db.Exec(`INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?, ?, ?)`,
-		token.Token, token.UserID, token.ExpiresAt)
+	_, err := r.db.Exec(
+		`INSERT INTO refresh_tokens (token, user_id, expires_at)
+		 VALUES ($1, $2, $3)`,
+		token.Token,
+		token.UserID,
+		token.ExpiresAt,
+	)
 	return err
 }
 
 func (r *RefreshTokenRepository) Get(token string) (*models.RefreshToken, error) {
-	row := r.db.QueryRow(`SELECT token, user_id, expires_at FROM refresh_tokens WHERE token=?`, token)
+	row := r.db.QueryRow(
+		`SELECT token, user_id, expires_at
+		 FROM refresh_tokens
+		 WHERE token = $1`,
+		token,
+	)
+
 	var t models.RefreshToken
 	if err := row.Scan(&t.Token, &t.UserID, &t.ExpiresAt); err != nil {
 		return nil, err
@@ -30,11 +41,17 @@ func (r *RefreshTokenRepository) Get(token string) (*models.RefreshToken, error)
 }
 
 func (r *RefreshTokenRepository) Delete(token string) error {
-	_, err := r.db.Exec(`DELETE FROM refresh_tokens WHERE token=?`, token)
+	_, err := r.db.Exec(
+		`DELETE FROM refresh_tokens WHERE token = $1`,
+		token,
+	)
 	return err
 }
 
 func (r *RefreshTokenRepository) DeleteByUser(userID string) error {
-	_, err := r.db.Exec(`DELETE FROM refresh_tokens WHERE user_id=?`, userID)
+	_, err := r.db.Exec(
+		`DELETE FROM refresh_tokens WHERE user_id = $1`,
+		userID,
+	)
 	return err
 }
