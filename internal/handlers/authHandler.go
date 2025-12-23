@@ -211,6 +211,23 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	}})
 }
 
+func (h *AuthHandler) GetUserByID(c *gin.Context) {
+	userID := c.Param("id") // get ID from route param
+
+	user, err := h.authService.FetchUser(userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":       user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+		"role":     user.Role,
+	})
+}
+
 // ----------------------------
 // UPDATE PROFILE
 // ----------------------------
@@ -322,4 +339,88 @@ func (h *AuthHandler) FetchAllUsers(c *gin.Context) {
 		"success": true,
 		"data":    users,
 	})
+}
+
+
+
+// GET /users?page=1&limit=10
+func (h *AuthHandler) GetPaginatedUsers(c *gin.Context) {
+	page := c.Query("page")
+	limit := c.Query("limit")
+
+	users, currentPage, pageLimit, err := h.authService.FetchUsersPaginated(page, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users": users,
+		"page":  currentPage,
+		"limit": pageLimit,
+	})
+}
+
+// PATCH /users/:id/role
+func (h *AuthHandler) UpdateUserRole(c *gin.Context) {
+	id := c.Param("id")
+
+	var body struct {
+		Role string `json:"role"`
+	}
+
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	if err := h.authService.UpdateUserRole(id, body.Role); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "role updated successfully"})
+}
+
+
+
+
+
+// CreateUserHandler handles POST /users
+func (h *AuthHandler) CreateUserHandler(c *gin.Context) {
+	var input models.User
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := h.authService.CreateUser(&input)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Remove password before returning
+	input.Password = ""
+
+	c.JSON(http.StatusCreated, input)
+}
+
+// UpdateUserHandler handles PATCH /users/:id
+func (h *AuthHandler) UpdateUserHandler(c *gin.Context) {
+	userID := c.Param("id")
+	var input models.User
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	input.ID = userID
+	err := h.authService.UpdateUser(&input)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
 }
