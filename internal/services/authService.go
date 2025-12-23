@@ -2,6 +2,8 @@ package services
 
 import (
 	"errors"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/FiraBro/local-go/internal/config"
@@ -14,8 +16,8 @@ import (
 )
 
 type AuthService struct {
-	userRepo      *repositories.UserRepository
-	refreshRepo   *repositories.RefreshTokenRepository
+	userRepo       *repositories.UserRepository
+	refreshRepo    *repositories.RefreshTokenRepository
 	resetTokenRepo *repositories.ResetTokenRepository
 }
 
@@ -25,14 +27,14 @@ func NewAuthService(
 	resetTokenRepo *repositories.ResetTokenRepository,
 ) *AuthService {
 	return &AuthService{
-		userRepo:      userRepo,
-		refreshRepo:   refreshRepo,
+		userRepo:       userRepo,
+		refreshRepo:    refreshRepo,
 		resetTokenRepo: resetTokenRepo,
 	}
 }
 
 // ----------------------------
-// Password helpers
+// PASSWORD HELPERS
 // ----------------------------
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 12)
@@ -47,18 +49,38 @@ func CheckPassword(hash, password string) error {
 // REGISTER
 // ----------------------------
 func (s *AuthService) Register(user *models.User) error {
+	// Validate required fields
+	if user.Username == "" || user.Email == "" || user.Password == "" {
+		return errors.New("username, email, and password are required")
+	}
+
+	// Check if email already exists
+	exists, err := s.userRepo.ExistsByEmail(user.Email)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return errors.New("email already in use")
+	}
+
+	// Hash password
 	hashed, err := HashPassword(user.Password)
 	if err != nil {
 		return err
 	}
 	user.Password = hashed
+
+	// Create user
 	return s.userRepo.CreateUser(user)
 }
+
 
 // ----------------------------
 // LOGIN
 // ----------------------------
 func (s *AuthService) Login(email, password string) (string, string, *models.User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+
 	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
 		return "", "", nil, errors.New("invalid email or password")
@@ -73,7 +95,7 @@ func (s *AuthService) Login(email, password string) (string, string, *models.Use
 		"user_id": user.ID,
 		"role":    user.Role,
 		"exp":     time.Now().Add(72 * time.Hour).Unix(),
-	}).SignedString(config.JWTSecret)
+	}).SignedString([]byte(config.JWTSecret))
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -85,7 +107,10 @@ func (s *AuthService) Login(email, password string) (string, string, *models.Use
 		UserID:    user.ID,
 		ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
 	}
-	s.refreshRepo.Save(rt)
+
+	if err := s.refreshRepo.Save(rt); err != nil {
+		return "", "", nil, err
+	}
 
 	return accessToken, refreshToken, user, nil
 }
@@ -100,14 +125,14 @@ func (s *AuthService) RefreshToken(token string) (string, error) {
 	}
 
 	if rt.ExpiresAt.Before(time.Now()) {
-		s.refreshRepo.Delete(token)
+		_ = s.refreshRepo.Delete(token)
 		return "", errors.New("refresh token expired")
 	}
 
 	newAccessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": rt.UserID,
 		"exp":     time.Now().Add(72 * time.Hour).Unix(),
-	}).SignedString(config.JWTSecret)
+	}).SignedString([]byte(config.JWTSecret))
 	if err != nil {
 		return "", err
 	}
@@ -123,7 +148,7 @@ func (s *AuthService) Logout(token string) error {
 }
 
 // ----------------------------
-// FORGOT PASSWORD (OTP)
+// FORGOT PASSWORD (hashed OTP)
 // ----------------------------
 func (s *AuthService) ForgotPassword(email string) error {
 	otp := utils.GenerateOTP()
@@ -133,9 +158,15 @@ func (s *AuthService) ForgotPassword(email string) error {
 		return err
 	}
 
+	// Hash OTP before saving
+	hashedOtp, err := HashPassword(otp)
+	if err != nil {
+		return err
+	}
+
 	rt := &models.ResetToken{
 		Email:     email,
-		OTP:       otp, // hash in production
+		OTP:       hashedOtp,
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 	}
 
@@ -143,7 +174,7 @@ func (s *AuthService) ForgotPassword(email string) error {
 		return err
 	}
 
-	// Send email (can be async later)
+	// Send email (can be async)
 	if err := utils.SendOTPEmail(email, otp); err != nil {
 		return err
 	}
@@ -151,26 +182,37 @@ func (s *AuthService) ForgotPassword(email string) error {
 	return nil
 }
 
-
-
 // ----------------------------
 // RESET PASSWORD
 // ----------------------------
 func (s *AuthService) ResetPassword(email, otp, newPassword string) error {
 	rt, err := s.resetTokenRepo.Get(email, otp)
-	if err != nil || rt.ExpiresAt.Before(time.Now()) {
+	if err != nil {
 		return errors.New("invalid or expired OTP")
 	}
 
-	s.resetTokenRepo.Delete(email)
+	if rt.ExpiresAt.Before(time.Now()) {
+		return errors.New("invalid or expired OTP")
+	}
 
 	user, err := s.userRepo.GetByEmail(email)
+	if err != nil {
+		return errors.New("user not found")
+	}
+
+	hashed, err := HashPassword(newPassword)
 	if err != nil {
 		return err
 	}
 
-	hashed, _ := HashPassword(newPassword)
-	return s.userRepo.UpdatePassword(user.ID, hashed)
+	if err := s.userRepo.UpdatePassword(user.ID, hashed); err != nil {
+		return err
+	}
+
+	// Delete OTP after success
+	_ = s.resetTokenRepo.Delete(email)
+
+	return nil
 }
 
 // ----------------------------
@@ -204,13 +246,48 @@ func (s *AuthService) ChangePassword(id, oldPassword, newPassword string) error 
 		return errors.New("old password is incorrect")
 	}
 
-	hashed, _ := HashPassword(newPassword)
+	hashed, err := HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
 	return s.userRepo.UpdatePassword(id, hashed)
 }
 
 // ----------------------------
-// DELETE USER
+// SOFT DELETE USER
 // ----------------------------
-func (s *AuthService) DeleteUser(id string) error {
-	return s.userRepo.DeleteUser(id)
+func (s *AuthService) SoftDeleteUser(id string) error {
+	return s.userRepo.SoftDeleteUser(id)
+}
+
+// ----------------------------
+// RESTORE USER
+// ----------------------------
+func (s *AuthService) RestoreUser(id string) error {
+	isDeleted, err := s.userRepo.IsUserDeleted(id)
+	if err != nil {
+		return err
+	}
+	if !isDeleted {
+		return errors.New("user is not deleted")
+	}
+
+	return s.userRepo.RestoreUser(id)
+}
+
+// ----------------------------
+// FETCH ALL USERS
+// ----------------------------
+func (s *AuthService) FetchAllUsers() ([]models.User, error) {
+	return s.userRepo.FetchAllUsers()
+}
+
+// ----------------------------
+// PURGE EXPIRED DELETED USERS
+// ----------------------------
+func (s *AuthService) PurgeExpiredDeletedUsers() {
+	if err := s.userRepo.PermanentlyDeleteExpired(); err != nil {
+		log.Println("⚠️ Failed to purge expired users:", err)
+	}
 }
