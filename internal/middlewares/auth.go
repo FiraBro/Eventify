@@ -5,11 +5,13 @@ import (
 	"strings"
 
 	"github.com/FiraBro/local-go/internal/config"
+	"github.com/FiraBro/local-go/internal/repositories"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 )
 
-func AuthMiddleware() gin.HandlerFunc {
+// AuthMiddleware verifies JWT and checks user existence & soft delete
+func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -23,6 +25,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// Parse JWT
 		token, err := jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
@@ -42,23 +45,33 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		userID, ok := claims["user_id"].(string)
-		if !ok {
+		if !ok || userID == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing user_id"})
 			return
 		}
 
 		role, ok := claims["role"].(string)
-		if !ok {
+		if !ok || role == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing role"})
 			return
 		}
 
-		c.Set("user_id", userID)
-		c.Set("role", role)
+		// ✅ Fetch user from DB and check soft delete
+		user, err := userRepo.GetActiveByID(userID)
+		if err != nil || user.DeletedAt != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User no longer active"})
+			return
+		}
+
+		// Store info in context
+		c.Set("user_id", user.ID)
+		c.Set("role", user.Role)
+
 		c.Next()
 	}
 }
 
+// AdminOnly ensures only admin users can access
 func AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, exists := getStringFromContext(c, "role")
@@ -70,6 +83,7 @@ func AdminOnly() gin.HandlerFunc {
 	}
 }
 
+// OwnerOrAdmin ensures only owner of the resource or admin can access
 func OwnerOrAdmin(getOwnerID func(c *gin.Context) string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := getStringFromContext(c, "user_id")
@@ -89,11 +103,12 @@ func OwnerOrAdmin(getOwnerID func(c *gin.Context) string) gin.HandlerFunc {
 	}
 }
 
+// Helper to get string from context
 func getStringFromContext(c *gin.Context, key string) (string, bool) {
-	iValue, exists := c.Get(key)
+	val, exists := c.Get(key)
 	if !exists {
 		return "", false
 	}
-	sValue, ok := iValue.(string)
-	return sValue, ok
+	strVal, ok := val.(string)
+	return strVal, ok
 }
