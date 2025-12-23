@@ -15,12 +15,25 @@ func NewResetTokenRepository(db *sql.DB) *ResetTokenRepository {
 }
 
 func (r *ResetTokenRepository) Save(token *models.ResetToken) error {
-	_, err := r.db.Exec(`INSERT INTO reset_tokens (email, otp, expires_at) VALUES (?, ?, ?)`, token.Email, token.OTP, token.ExpiresAt)
+	_, err := r.db.Exec(
+		`INSERT INTO reset_tokens (email, otp, expires_at)
+		 VALUES ($1, $2, $3)`,
+		token.Email,
+		token.OTP,
+		token.ExpiresAt,
+	)
 	return err
 }
 
 func (r *ResetTokenRepository) Get(email, otp string) (*models.ResetToken, error) {
-	row := r.db.QueryRow(`SELECT email, otp, expires_at FROM reset_tokens WHERE email=? AND otp=?`, email, otp)
+	row := r.db.QueryRow(
+		`SELECT email, otp, expires_at
+		 FROM reset_tokens
+		 WHERE email = $1 AND otp = $2`,
+		email,
+		otp,
+	)
+
 	var t models.ResetToken
 	if err := row.Scan(&t.Email, &t.OTP, &t.ExpiresAt); err != nil {
 		return nil, err
@@ -29,6 +42,9 @@ func (r *ResetTokenRepository) Get(email, otp string) (*models.ResetToken, error
 }
 
 func (r *ResetTokenRepository) Delete(email string) error {
-	_, err := r.db.Exec(`DELETE FROM reset_tokens WHERE email=?`, email)
+	_, err := r.db.Exec(
+		`DELETE FROM reset_tokens WHERE email = $1`,
+		email,
+	)
 	return err
 }
