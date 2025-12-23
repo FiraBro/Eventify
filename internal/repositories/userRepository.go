@@ -63,7 +63,7 @@ func (r *UserRepository) GetByEmail(email string) (*models.User, error) {
 // ----------------------------
 // GET USER BY ID
 // ----------------------------
-func (r *UserRepository) GetByID(id string) (*models.User, error) {
+func (r *UserRepository) GetUserByID(id string) (*models.User, error) {
 	row := r.db.QueryRow(`
 		SELECT id, username, email, password, role
 		FROM users
@@ -236,4 +236,56 @@ func (r *UserRepository) PermanentlyDeleteExpired() error {
 		AND delete_deadline <= NOW()
 	`)
 	return err
+}
+
+
+// ----------------------------
+// UPDATE USER ROLE
+// ----------------------------
+func (r *UserRepository) UpdateUserRole(id, role string) error {
+	_, err := r.db.Exec(`
+		UPDATE users
+		SET role = $1
+		WHERE id = $2 AND deleted_at IS NULL
+	`, role, id)
+	return err
+}
+
+// ----------------------------
+// FETCH USERS WITH PAGINATION
+// ----------------------------
+// page: current page number (starting from 1)
+// limit: number of users per page
+func (r *UserRepository) FetchUsersPaginated(page, limit int) ([]models.User, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10 // default limit
+	}
+
+	offset := (page - 1) * limit
+
+	rows, err := r.db.Query(`
+		SELECT id, username, email, role
+		FROM users
+		WHERE deleted_at IS NULL
+		ORDER BY username ASC
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Role); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+
+	return users, nil
 }
