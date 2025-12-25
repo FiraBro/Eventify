@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
 
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/services"
@@ -9,17 +10,20 @@ import (
 )
 
 type StaffHandler struct {
-	service *services.StaffService
+	service             *services.StaffService
+	availabilityService *services.AvailabilityService
 }
 
-func NewStaffHandler(s *services.StaffService) *StaffHandler {
-	return &StaffHandler{service: s}
+func NewStaffHandler(ss *services.StaffService, as *services.AvailabilityService) *StaffHandler {
+	return &StaffHandler{
+		service:             ss,
+		availabilityService: as,
+	}
 }
 
 // ---------- STAFF CRUD ----------
 
 func (h *StaffHandler) ListStaff(c *gin.Context) {
-	// Use c.Request.Context() to pass Gin's context to the service layer
 	staff, err := h.service.GetAll(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch staff list"})
@@ -35,7 +39,6 @@ func (h *StaffHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Note: UUID generation is now handled inside the repository/service
 	if err := h.service.Create(c.Request.Context(), &s); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -46,7 +49,7 @@ func (h *StaffHandler) Create(c *gin.Context) {
 func (h *StaffHandler) GetStaffDetails(c *gin.Context) {
 	id := c.Param("id")
 	staff, err := h.service.GetByID(c.Request.Context(), id)
-	
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
@@ -81,35 +84,21 @@ func (h *StaffHandler) Delete(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Staff deleted"})
 }
-func (h *StaffHandler) GetServices(c *gin.Context) {
-    id := c.Param("id")
-    
-    services, err := h.service.GetServices(c.Request.Context(), id)
-    if err != nil {
-        // CHANGE THIS: return err.Error() instead of a hardcoded string
-        c.JSON(http.StatusInternalServerError, gin.H{
-            "error":   "Failed to fetch assigned services",
-            "details": err.Error(), // This shows the real SQL or Logic error
-        })
-        return
-    }
-    
-    c.JSON(http.StatusOK, services)
-}
 
-// GET /staff/:id/schedule
-func (h *StaffHandler) GetSchedule(c *gin.Context) {
-    id := c.Param("id")
-    
-    schedule, err := h.service.GetSchedule(c.Request.Context(), id)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch staff schedule"})
-        return
-    }
-    
-    c.JSON(http.StatusOK, schedule)
-}
 // ---------- SERVICES RELATIONSHIP ----------
+
+func (h *StaffHandler) GetServices(c *gin.Context) {
+	id := c.Param("id")
+	services, err := h.service.GetServices(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to fetch assigned services",
+			"details": err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, services)
+}
 
 func (h *StaffHandler) AssignServices(c *gin.Context) {
 	staffID := c.Param("id")
@@ -129,25 +118,47 @@ func (h *StaffHandler) AssignServices(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Services updated"})
 }
 
-// ---------- SCHEDULE ----------
+// ---------- SCHEDULE & HOLIDAYS ----------
 
-func (h *StaffHandler) SetSchedule(c *gin.Context) {
+func (h *StaffHandler) GetSchedule(c *gin.Context) {
 	id := c.Param("id")
-	var body []map[string]string // Ideally use []models.ScheduleEntry
-
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid schedule format"})
+	schedule, err := h.service.GetSchedule(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch staff schedule"})
 		return
 	}
-
-	if err := h.service.SetSchedule(c.Request.Context(), id, body); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set schedule"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	c.JSON(http.StatusOK, schedule)
 }
 
-// ---------- HOLIDAYS ----------
+func (h *StaffHandler) SetSchedule(c *gin.Context) {
+
+id := c.Param("id")
+
+var body []map[string]string // Ideally use []models.ScheduleEntry
+
+
+
+if err := c.ShouldBindJSON(&body); err != nil {
+
+c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid schedule format"})
+
+return
+
+}
+
+
+
+if err := h.service.SetSchedule(c.Request.Context(), id, body); err != nil {
+
+c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set schedule"})
+
+return
+
+}
+
+c.JSON(http.StatusOK, gin.H{"success": true})
+
+}
 
 func (h *StaffHandler) AddHoliday(c *gin.Context) {
 	id := c.Param("id")
@@ -166,4 +177,61 @@ func (h *StaffHandler) AddHoliday(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ---------- AVAILABILITY ----------
+
+// GET /availability/staff/:staffId?date=2025-12-25
+func (h *StaffHandler) GetStaffAvailability(c *gin.Context) {
+	staffID := c.Param("staffId")
+	date := c.Query("date")
+
+	if date == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Date query parameter is required (YYYY-MM-DD)"})
+		return
+	}
+
+	slots, err := h.availabilityService.GetStaffSlots(c.Request.Context(), staffID, date)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate slots"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"staff_id": staffID, "date": date, "available_slots": slots})
+}
+
+// GET /availability/services/:serviceId?date=2025-12-25
+func (h *StaffHandler) GetServiceAvailability(c *gin.Context) {
+	serviceID := c.Param("serviceId")
+	date := c.Query("date")
+
+	if date == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Date query parameter is required (YYYY-MM-DD)"})
+		return
+	}
+
+	// Fetch staff members capable of performing this service via the service layer
+	staffList, err := h.service.GetStaffByService(c.Request.Context(), serviceID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch qualified staff"})
+		return
+	}
+
+	uniqueSlots := make(map[string]bool)
+	for _, staff := range staffList {
+		slots, err := h.availabilityService.GetStaffSlots(c.Request.Context(), staff.ID, date)
+		if err != nil {
+			continue // Skip individual staff errors to provide partial results if possible
+		}
+		for _, slot := range slots {
+			uniqueSlots[slot] = true
+		}
+	}
+
+	result := []string{}
+	for slot := range uniqueSlots {
+		result = append(result, slot)
+	}
+	sort.Strings(result)
+
+	c.JSON(http.StatusOK, gin.H{"service_id": serviceID, "date": date, "available_slots": result})
 }
