@@ -19,8 +19,8 @@ func StaffRoutes(
 	staff.Use(authMW) // all routes require authentication
 	{
 		// Public-ish routes (list and get staff details)
-		staff.GET("", handler.List)           // list all staff
-		staff.GET("/:id", handler.Get)       // get staff details
+		staff.GET("", handler.ListStaff)           // list all staff
+		staff.GET("/:id", handler.GetStaffDetails)       // get staff details
 		staff.GET("/:id/services", handler.GetServices)
 		staff.GET("/:id/schedule", handler.GetSchedule)
 
