@@ -96,6 +96,30 @@ func (r *StaffRepository) GetServiceIDs(ctx context.Context, staffID string) ([]
     }
     return ids, nil
 }
+func (r *StaffRepository) GetStaffByService(ctx context.Context, serviceID string) ([]models.Staff, error) {
+    query := `
+        SELECT s.id, s.name, s.email, s.phone, s.role
+        FROM staff s
+        JOIN staff_services ss ON s.id = ss.staff_id
+        WHERE ss.service_id = $1
+    `
+
+    rows, err := r.db.QueryContext(ctx, query, serviceID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var staffList []models.Staff
+    for rows.Next() {
+        var s models.Staff
+        if err := rows.Scan(&s.ID, &s.Name, &s.Email, &s.Phone, &s.Role); err != nil {
+            return nil, err
+        }
+        staffList = append(staffList, s)
+    }
+    return staffList, nil
+}
 
 // AssignServices uses a Sync pattern: Delete existing associations and re-insert
 func (r *StaffRepository) AssignServices(ctx context.Context, staffID string, serviceIDs []string) error {
@@ -126,28 +150,7 @@ func (r *StaffRepository) AssignServices(ctx context.Context, staffID string, se
 
 // ------------------- SCHEDULE -------------------
 
-func (r *StaffRepository) GetSchedule(ctx context.Context, staffID string) ([]map[string]string, error) {
-    query := `SELECT day_of_week, start_time, end_time FROM staff_schedule WHERE staff_id = $1 ORDER BY day_of_week`
-    rows, err := r.db.QueryContext(ctx, query, staffID)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
 
-    var schedule []map[string]string
-    for rows.Next() {
-        var day, start, end string
-        if err := rows.Scan(&day, &start, &end); err != nil {
-            return nil, err
-        }
-        schedule = append(schedule, map[string]string{
-            "day":   day,
-            "start": start,
-            "end":   end,
-        })
-    }
-    return schedule, nil
-}
 
 func (r *StaffRepository) SetSchedule(ctx context.Context, staffID string, entries []map[string]string) error {
     tx, err := r.db.BeginTx(ctx, nil)
@@ -172,6 +175,28 @@ func (r *StaffRepository) SetSchedule(ctx context.Context, staffID string, entri
 
     return tx.Commit()
 }
+func (r *StaffRepository) GetSchedule(ctx context.Context, staffID string) ([]map[string]string, error) {
+    query := `SELECT day_of_week, start_time, end_time FROM staff_schedule WHERE staff_id = $1`
+    rows, err := r.db.QueryContext(ctx, query, staffID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var schedule []map[string]string
+    for rows.Next() {
+        var day, start, end string
+        if err := rows.Scan(&day, &start, &end); err != nil {
+            return nil, err
+        }
+        schedule = append(schedule, map[string]string{
+            "day":   day,
+            "start": start,
+            "end":   end,
+        })
+    }
+    return schedule, nil
+}
 
 // ------------------- HOLIDAYS -------------------
 
@@ -180,3 +205,33 @@ func (r *StaffRepository) AddHoliday(ctx context.Context, staffID, date, reason 
     _, err := r.db.ExecContext(ctx, query, uuid.New().String(), staffID, date, reason)
     return err
 }
+// Refactored to return both for the availability service
+func (r *StaffRepository) GetAvailabilityData(ctx context.Context, staffID string) ([]map[string]string, []string, error) {
+    // 1. Reuse your GetSchedule logic
+    schedule, err := r.GetSchedule(ctx, staffID)
+    if err != nil {
+        return nil, nil, err
+    }
+
+    // 2. Get Holiday Dates
+    hRows, err := r.db.QueryContext(ctx, `SELECT date FROM staff_holidays WHERE staff_id = $1`, staffID)
+    if err != nil {
+        return nil, nil, err
+    }
+    defer hRows.Close()
+
+    var holidays []string
+    for hRows.Next() {
+        var date string
+        if err := hRows.Scan(&date); err != nil {
+            return nil, nil, err
+        }
+        holidays = append(holidays, date)
+    }
+
+    return schedule, holidays, nil
+}
+
+
+
+
