@@ -16,63 +16,61 @@ import (
 const version = "/api/v1"
 
 func main() {
-	// Load .env file
+	// 1. Load Environment Variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("⚠ .env file not found, using system environment variables")
 	}
 
-	// Validate env
+	// 2. Configuration & Database
 	config.ValidateConfig()
-
-	// Init DB
 	dbConn := db.InitDB()
 
 	// ------------------------
-	// Repositories
+	// 3. Repositories
 	// ------------------------
 	userRepo := repositories.NewUserRepository(dbConn)
 	staffRepo := repositories.NewStaffRepository(dbConn)
 	serviceRepo := repositories.NewServiceRepository(dbConn)
-
 	refreshRepo := repositories.NewRefreshTokenRepository(dbConn)
 	resetRepo := repositories.NewResetTokenRepository(dbConn)
 
 	// ------------------------
-	// Services
+	// 4. Services (FIXED DEPENDENCIES)
 	// ------------------------
 	authService := services.NewAuthService(userRepo, refreshRepo, resetRepo)
-	staffService := services.NewStaffService(staffRepo)
+	
+	// StaffService needs BOTH staffRepo and serviceRepo to manage relationships
+	staffService := services.NewStaffService(staffRepo, serviceRepo) 
+	
 	serviceService := services.NewServiceService(serviceRepo)
 
 	// ------------------------
-	// Handlers
+	// 5. Handlers
 	// ------------------------
 	authHandler := handlers.NewAuthHandler(authService)
 	staffHandler := handlers.NewStaffHandler(staffService)
 	serviceHandler := handlers.NewServiceHandler(serviceService)
 
 	// ------------------------
-	// Gin setup
+	// 6. Router Setup
 	// ------------------------
 	r := gin.Default()
+	
+	// Apply Global Middlewares (CORS, etc.) if you have them
+	// r.Use(middlewares.CORS())
+
 	api := r.Group(version)
 
-	// Auth routes
+	// Initialize Routes
 	routes.AuthRoutes(api, authHandler, userRepo)
-
-	// User management routes
 	routes.UserRoutes(api, authHandler, userRepo)
-
-	// Staff routes (REPLACED event routes)
 	routes.StaffRoutes(api, staffHandler, userRepo)
-
-	// Service routes
-	routes.ServiceRoutes(api, serviceHandler,userRepo)
+	routes.ServiceRoutes(api, serviceHandler, userRepo)
 
 	// ------------------------
-	// Start server
+	// 7. Start Server
 	// ------------------------
-	log.Println("✅ Server running on :8080")
+	log.Println("✅ Server running on http://localhost:8080" + version)
 	if err := r.Run(":8080"); err != nil {
 		log.Fatal("❌ Failed to start server:", err)
 	}
