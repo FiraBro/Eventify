@@ -6,161 +6,164 @@ import (
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/services"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type StaffHandler struct {
-    service *services.StaffService
+	service *services.StaffService
 }
 
 func NewStaffHandler(s *services.StaffService) *StaffHandler {
-    return &StaffHandler{service: s}
+	return &StaffHandler{service: s}
 }
 
-// ---------- CRUD ----------
+// ---------- STAFF CRUD ----------
 
-func (h *StaffHandler) List(c *gin.Context) {
-    staff, err := h.service.GetAll()
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch staff"})
-        return
-    }
-    c.JSON(http.StatusOK, staff)
+func (h *StaffHandler) ListStaff(c *gin.Context) {
+	// Use c.Request.Context() to pass Gin's context to the service layer
+	staff, err := h.service.GetAll(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch staff list"})
+		return
+	}
+	c.JSON(http.StatusOK, staff)
 }
 
 func (h *StaffHandler) Create(c *gin.Context) {
-    var s models.Staff
-    if err := c.ShouldBindJSON(&s); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
-        return
-    }
-    s.ID = uuid.New().String()
+	var s models.Staff
+	if err := c.ShouldBindJSON(&s); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
+		return
+	}
 
-    if err := h.service.Create(&s); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create staff"})
-        return
-    }
-    c.JSON(http.StatusCreated, s)
+	// Note: UUID generation is now handled inside the repository/service
+	if err := h.service.Create(c.Request.Context(), &s); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, s)
 }
 
-func (h *StaffHandler) Get(c *gin.Context) {
-    id := c.Param("id")
-    staff, err := h.service.GetByID(id)
-
-    if err != nil {
-        c.JSON(http.StatusNotFound, gin.H{"error": "Staff not found"})
-        return
-    }
-    c.JSON(http.StatusOK, staff)
+func (h *StaffHandler) GetStaffDetails(c *gin.Context) {
+	id := c.Param("id")
+	staff, err := h.service.GetByID(c.Request.Context(), id)
+	
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if staff == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Staff member not found"})
+		return
+	}
+	c.JSON(http.StatusOK, staff)
 }
 
 func (h *StaffHandler) Update(c *gin.Context) {
-    id := c.Param("id")
-    var s models.Staff
+	id := c.Param("id")
+	var s models.Staff
+	if err := c.ShouldBindJSON(&s); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
 
-    if err := c.ShouldBindJSON(&s); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
-        return
-    }
-
-    if err := h.service.Update(id, &s); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update staff"})
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"success": true})
+	if err := h.service.Update(c.Request.Context(), id, &s); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update staff"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Staff updated"})
 }
 
 func (h *StaffHandler) Delete(c *gin.Context) {
-    id := c.Param("id")
-    if err := h.service.Delete(id); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete staff"})
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"success": true})
+	id := c.Param("id")
+	if err := h.service.Delete(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete staff"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Staff deleted"})
 }
-
-// ---------- SERVICES ----------
-
 func (h *StaffHandler) GetServices(c *gin.Context) {
     id := c.Param("id")
-    services, _ := h.service.GetServices(id)
-    c.JSON(http.StatusOK, services)
-}
-
-func (h *StaffHandler) AssignServices(c *gin.Context) {
-    // 1. GET ID FROM PARAM (The URL: /staff/:id/services)
-    staffID := c.Param("id")
-
-    // 2. GET SERVICES FROM BODY (The JSON: {"services": [...]})
-    var body struct {
-        Services []string `json:"services" binding:"required"`
-    }
-
-    if err := c.ShouldBindJSON(&body); err != nil {
-        // Detailed error for debugging
-        c.JSON(http.StatusBadRequest, gin.H{
-            "success": false, 
-            "error":   "Request body is missing or malformed",
-            "details": err.Error(),
+    
+    services, err := h.service.GetServices(c.Request.Context(), id)
+    if err != nil {
+        // CHANGE THIS: return err.Error() instead of a hardcoded string
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error":   "Failed to fetch assigned services",
+            "details": err.Error(), // This shows the real SQL or Logic error
         })
         return
     }
-
-    // 3. PASS BOTH TO THE SERVICE LAYER
-    err := h.service.AssignServices(staffID, body.Services)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to assign"})
-        return
-    }
-
-    c.JSON(http.StatusOK, gin.H{"success": true, "message": "Services assigned successfully"})
+    
+    c.JSON(http.StatusOK, services)
 }
-// ---------- SCHEDULE ----------
 
+// GET /staff/:id/schedule
 func (h *StaffHandler) GetSchedule(c *gin.Context) {
     id := c.Param("id")
-    schedule, _ := h.service.GetSchedule(id)
+    
+    schedule, err := h.service.GetSchedule(c.Request.Context(), id)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch staff schedule"})
+        return
+    }
+    
     c.JSON(http.StatusOK, schedule)
 }
+// ---------- SERVICES RELATIONSHIP ----------
 
-func (h *StaffHandler) SetSchedule(c *gin.Context) {
-    id := c.Param("id")
+func (h *StaffHandler) AssignServices(c *gin.Context) {
+	staffID := c.Param("id")
+	var body struct {
+		Services []string `json:"services" binding:"required"`
+	}
 
-    var body []map[string]string
-    if err := c.ShouldBindJSON(&body); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid schedule"})
-        return
-    }
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Service IDs are required"})
+		return
+	}
 
-    err := h.service.SetSchedule(id, body)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set schedule"})
-        return
-    }
-
-    c.JSON(http.StatusOK, gin.H{"success": true})
+	if err := h.service.AssignServices(c.Request.Context(), staffID, body.Services); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Services updated"})
 }
 
-// ---------- HOLIDAY ----------
+// ---------- SCHEDULE ----------
+
+func (h *StaffHandler) SetSchedule(c *gin.Context) {
+	id := c.Param("id")
+	var body []map[string]string // Ideally use []models.ScheduleEntry
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid schedule format"})
+		return
+	}
+
+	if err := h.service.SetSchedule(c.Request.Context(), id, body); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set schedule"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ---------- HOLIDAYS ----------
 
 func (h *StaffHandler) AddHoliday(c *gin.Context) {
-    id := c.Param("id")
+	id := c.Param("id")
+	var body struct {
+		Date   string `json:"date" binding:"required"`
+		Reason string `json:"reason"`
+	}
 
-    var body struct {
-        Date   string `json:"date"`
-        Reason string `json:"reason"`
-    }
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Date is required"})
+		return
+	}
 
-    if err := c.ShouldBindJSON(&body); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
-        return
-    }
-
-    err := h.service.AddHoliday(id, body.Date, body.Reason)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add holiday"})
-        return
-    }
-
-    c.JSON(http.StatusOK, gin.H{"success": true})
+	if err := h.service.AddHoliday(c.Request.Context(), id, body.Date, body.Reason); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add holiday"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
