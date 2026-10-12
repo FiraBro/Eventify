@@ -4,8 +4,8 @@ FROM golang:1.25-alpine
 # Install required tools
 RUN apk add --no-cache bash git
 
-# Install Air (hot reload tool)
-RUN go install github.com/air-verse/air@latest
+# Install Air with a Go version compatible release
+RUN go install github.com/air-verse/air@v1.61.1
 
 # Add Go bin to PATH
 ENV PATH=$PATH:/go/bin
@@ -23,5 +23,5 @@ COPY . .
 # Expose API port
 EXPOSE 8080
 
-# Run Air with config
+# Run the app with auto-reload
 CMD ["air", "-c", ".air.toml"]

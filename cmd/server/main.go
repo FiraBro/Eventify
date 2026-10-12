@@ -40,15 +40,15 @@ func main() {
 	authService := services.NewAuthService(userRepo, refreshRepo, resetRepo)
 	
 	// StaffService needs BOTH staffRepo and serviceRepo to manage relationships
-	staffService := services.NewStaffService(staffRepo, serviceRepo) 
-	
+	staffService := services.NewStaffService(staffRepo, serviceRepo)
+	availabilityService := services.NewAvailabilityService(staffRepo)
 	serviceService := services.NewServiceService(serviceRepo)
 
 	// ------------------------
 	// 5. Handlers
 	// ------------------------
 	authHandler := handlers.NewAuthHandler(authService)
-	staffHandler := handlers.NewStaffHandler(staffService)
+	staffHandler := handlers.NewStaffHandler(staffService, availabilityService)
 	serviceHandler := handlers.NewServiceHandler(serviceService)
 
 	// ------------------------
