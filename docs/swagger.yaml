@@ -1,0 +1,9 @@
+basePath: /api/v1
+host: localhost:8080
+info:
+  contact: {}
+  description: Interactive live API documentation for the local-go ecosystem.
+  title: Local-Go API Engine
+  version: "1.0"
+paths: {}
+swagger: "2.0"
