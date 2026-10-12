@@ -1,0 +1,25 @@
+package models
+
+import "time"
+
+type Booking struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	ServiceID   string    `json:"service_id"`
+	ScheduledAt time.Time `json:"scheduled_at"`
+	Status      string    `json:"status"`
+	Notes       string    `json:"notes"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// DTO for PATCH updates (partial updates)
+type UpdateBookingRequest struct {
+	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
+	Notes       *string    `json:"notes,omitempty"`
+}
+
+// DTO for PATCH /bookings/:id/status
+type UpdateBookingStatusRequest struct {
+	Status string `json:"status"`
+}

@@ -31,18 +31,22 @@ func main() {
 	userRepo := repositories.NewUserRepository(dbConn)
 	staffRepo := repositories.NewStaffRepository(dbConn)
 	serviceRepo := repositories.NewServiceRepository(dbConn)
+	bookingRepo := repositories.NewBookingRepository(dbConn)
 	refreshRepo := repositories.NewRefreshTokenRepository(dbConn)
 	resetRepo := repositories.NewResetTokenRepository(dbConn)
 
 	// ------------------------
-	// 4. Services (FIXED DEPENDENCIES)
+	// 4. Services
 	// ------------------------
 	authService := services.NewAuthService(userRepo, refreshRepo, resetRepo)
-	
+
 	// StaffService needs BOTH staffRepo and serviceRepo to manage relationships
 	staffService := services.NewStaffService(staffRepo, serviceRepo)
 	availabilityService := services.NewAvailabilityService(staffRepo)
 	serviceService := services.NewServiceService(serviceRepo)
+
+	// BookingService needs serviceRepo to verify the booked service exists
+	bookingService := services.NewBookingService(bookingRepo, serviceRepo)
 
 	// ------------------------
 	// 5. Handlers
@@ -50,12 +54,13 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService)
 	staffHandler := handlers.NewStaffHandler(staffService, availabilityService)
 	serviceHandler := handlers.NewServiceHandler(serviceService)
+	bookingHandler := handlers.NewBookingHandler(bookingService)
 
 	// ------------------------
 	// 6. Router Setup
 	// ------------------------
 	r := gin.Default()
-	
+
 	// Apply Global Middlewares (CORS, etc.) if you have them
 	// r.Use(middlewares.CORS())
 
@@ -66,6 +71,7 @@ func main() {
 	routes.UserRoutes(api, authHandler, userRepo)
 	routes.StaffRoutes(api, staffHandler, userRepo)
 	routes.ServiceRoutes(api, serviceHandler, userRepo)
+	routes.BookingRoutes(api, bookingHandler, userRepo)
 
 	// ------------------------
 	// 7. Start Server
