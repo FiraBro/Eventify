@@ -49,6 +49,7 @@ func main() {
 	serviceRepo := repositories.NewServiceRepository(dbConn)
 	bookingRepo := repositories.NewBookingRepository(dbConn)
 	paymentRepo := repositories.NewPaymentRepository(dbConn)
+	notificationRepo := repositories.NewNotificationRepository(dbConn)
 	refreshRepo := repositories.NewRefreshTokenRepository(dbConn)
 	resetRepo := repositories.NewResetTokenRepository(dbConn)
 
@@ -75,12 +76,17 @@ func main() {
 		Currency:    "ETB",
 	})
 
+		notificationService := services.NewNotificationService(notificationRepo)
+
+
+
 	// 6. Handlers
 	authHandler := handlers.NewAuthHandler(authService)
 	staffHandler := handlers.NewStaffHandler(staffService, availabilityService)
 	serviceHandler := handlers.NewServiceHandler(serviceService)
 	bookingHandler := handlers.NewBookingHandler(bookingService)
 	paymentHandler := handlers.NewPaymentHandler(paymentService)
+	notificationHandler := handlers.NewNotificationHandler(notificationService)
 
 	// 7. Router
 	if os.Getenv("GIN_MODE") == "" && os.Getenv("APP_ENV") == "production" {
@@ -102,6 +108,7 @@ func main() {
 	routes.ServiceRoutes(api, serviceHandler, userRepo)
 	routes.BookingRoutes(api, bookingHandler, userRepo)
 	routes.PaymentRoutes(api, paymentHandler, userRepo)
+	routes.NotificationRoutes(api, notificationHandler, userRepo)
 
 	// Swagger UI (disabled in production)
 	if os.Getenv("APP_ENV") != "production" {
