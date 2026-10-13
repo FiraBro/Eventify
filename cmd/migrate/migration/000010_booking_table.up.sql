@@ -12,3 +12,11 @@ CREATE TABLE IF NOT EXISTS bookings (
 CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings (user_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_service_id ON bookings (service_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings (status);
+
+-- Needed by GET /reports/staff-performance.
+-- Nullable on purpose: existing bookings stay valid, and nothing sets it yet.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS staff_id UUID;
+CREATE INDEX IF NOT EXISTS idx_bookings_staff_id ON bookings(staff_id);
+
+-- Helpful indexes for the report date filters
+CREATE INDEX IF NOT EXISTS idx_bookings_scheduled_at ON bookings(scheduled_at);

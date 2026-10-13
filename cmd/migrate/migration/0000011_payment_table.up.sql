@@ -23,3 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_user_id    ON payments(user_id);
 -- A booking can have at most ONE live payment (prevents double checkout / double charge)
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_one_active_per_booking
     ON payments(booking_id) WHERE status IN ('pending','paid','refund_pending');
+
+-- Helpful indexes for the report date filters
+CREATE INDEX IF NOT EXISTS idx_payments_paid_at      ON payments(paid_at);
+CREATE INDEX IF NOT EXISTS idx_payments_refunded_at  ON payments(refunded_at);

@@ -52,6 +52,7 @@ func main() {
 	notificationRepo := repositories.NewNotificationRepository(dbConn)
 	refreshRepo := repositories.NewRefreshTokenRepository(dbConn)
 	resetRepo := repositories.NewResetTokenRepository(dbConn)
+	reportRepo := repositories.NewReportRepository(dbConn)
 
 
 	// ------------------------
@@ -77,6 +78,7 @@ func main() {
 	})
 
 		notificationService := services.NewNotificationService(notificationRepo)
+		reportService := services.NewReportService(reportRepo)
 
 
 
@@ -87,6 +89,7 @@ func main() {
 	bookingHandler := handlers.NewBookingHandler(bookingService)
 	paymentHandler := handlers.NewPaymentHandler(paymentService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService)
+	reportHandler := handlers.NewReportHandler(reportService)
 
 	// 7. Router
 	if os.Getenv("GIN_MODE") == "" && os.Getenv("APP_ENV") == "production" {
@@ -109,6 +112,7 @@ func main() {
 	routes.BookingRoutes(api, bookingHandler, userRepo)
 	routes.PaymentRoutes(api, paymentHandler, userRepo)
 	routes.NotificationRoutes(api, notificationHandler, userRepo)
+	routes.ReportRoutes(api, reportHandler, userRepo)
 
 	// Swagger UI (disabled in production)
 	if os.Getenv("APP_ENV") != "production" {

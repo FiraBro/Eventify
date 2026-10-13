@@ -21,6 +21,17 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 // ----------------------------
 // REGISTER
 // ----------------------------
+
+// Register godoc
+// @Summary      Register a new user
+// @Description  Create a new user account. The role defaults to "user" when not provided.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      models.User  true  "User registration payload"
+// @Success      201      {object}  map[string]interface{}
+// @Failure      400      {object}  map[string]interface{}
+// @Router       /auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var input models.User
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -67,6 +78,18 @@ func (h *AuthHandler) Register(c *gin.Context) {
 // ----------------------------
 // LOGIN
 // ----------------------------
+
+// Login godoc
+// @Summary      Log in
+// @Description  Authenticate with email and password. Returns an access token and a refresh token. Body: {"email": "string", "password": "string"}
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      map[string]string  true  "Login credentials (email, password)"
+// @Success      200      {object}  map[string]interface{}
+// @Failure      400      {object}  map[string]interface{}
+// @Failure      401      {object}  map[string]interface{}
+// @Router       /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var input struct {
 		Email    string `json:"email" binding:"required"`
@@ -108,6 +131,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // ----------------------------
 // REFRESH TOKEN
 // ----------------------------
+
+// Refresh godoc
+// @Summary      Refresh access token
+// @Description  Exchange a valid refresh token for a new access token. Body: {"refresh_token": "string"}
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      map[string]string  true  "Refresh token payload"
+// @Success      200      {object}  map[string]interface{}
+// @Failure      400      {object}  map[string]interface{}
+// @Failure      401      {object}  map[string]interface{}
+// @Router       /auth/refresh [post]
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var body struct {
 		RefreshToken string `json:"refresh_token" binding:"required"`
@@ -130,6 +165,18 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 // ----------------------------
 // LOGOUT
 // ----------------------------
+
+// Logout godoc
+// @Summary      Log out
+// @Description  Invalidate the given refresh token. Body: {"refresh_token": "string"}
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      map[string]string  true  "Refresh token payload"
+// @Success      200      {object}  map[string]interface{}
+// @Failure      400      {object}  map[string]interface{}
+// @Failure      500      {object}  map[string]interface{}
+// @Router       /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	var body struct {
 		RefreshToken string `json:"refresh_token" binding:"required"`
@@ -151,6 +198,17 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 // ----------------------------
 // FORGOT PASSWORD
 // ----------------------------
+
+// ForgotPassword godoc
+// @Summary      Request a password reset OTP
+// @Description  Sends an OTP to the email if it exists. Always returns the same response to avoid revealing which emails are registered. Body: {"email": "string"}
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      map[string]string  true  "Email payload"
+// @Success      200      {object}  map[string]interface{}
+// @Failure      400      {object}  map[string]interface{}
+// @Router       /auth/forgot-password [post]
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	var body struct {
 		Email string `json:"email" binding:"required,email"`
@@ -172,6 +230,17 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 // ----------------------------
 // RESET PASSWORD
 // ----------------------------
+
+// ResetPassword godoc
+// @Summary      Reset password with OTP
+// @Description  Set a new password using the OTP sent by email. Body: {"email": "string", "otp": "string", "new_password": "string (min 6 chars)"}
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      map[string]string  true  "Reset password payload"
+// @Success      200      {object}  map[string]interface{}
+// @Failure      400      {object}  map[string]interface{}
+// @Router       /auth/reset-password [post]
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var body struct {
 		Email       string `json:"email" binding:"required,email"`
@@ -195,6 +264,18 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 // ----------------------------
 // GET PROFILE
 // ----------------------------
+
+// GetProfile godoc
+// @Summary      Get my profile
+// @Description  Retrieve the profile of the authenticated user
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string  true  "Bearer <JWT_TOKEN>"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      401            {object}  map[string]interface{}
+// @Failure      404            {object}  map[string]interface{}
+// @Router       /auth/profile [get]
 func (h *AuthHandler) GetProfile(c *gin.Context) {
 	userID := c.GetString("user_id")
 	user, err := h.authService.FetchUser(userID)
@@ -211,6 +292,17 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	}})
 }
 
+// GetUserByID godoc
+// @Summary      Get a user by ID
+// @Description  Retrieve a specific user's public details by their ID
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string  true  "Bearer <JWT_TOKEN>"
+// @Param        id             path      string  true  "User UUID"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      404            {object}  map[string]interface{}
+// @Router       /users/{id} [get]
 func (h *AuthHandler) GetUserByID(c *gin.Context) {
 	userID := c.Param("id") // get ID from route param
 
@@ -231,6 +323,19 @@ func (h *AuthHandler) GetUserByID(c *gin.Context) {
 // ----------------------------
 // UPDATE PROFILE
 // ----------------------------
+
+// UpdateProfile godoc
+// @Summary      Update my profile
+// @Description  Update the username and/or email of the authenticated user. Body: {"username": "string", "email": "string"}
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string             true  "Bearer <JWT_TOKEN>"
+// @Param        request        body      map[string]string  true  "Profile update payload"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      400            {object}  map[string]interface{}
+// @Failure      500            {object}  map[string]interface{}
+// @Router       /auth/profile [patch]
 func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -255,6 +360,18 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 // ----------------------------
 // CHANGE PASSWORD
 // ----------------------------
+
+// ChangePassword godoc
+// @Summary      Change my password
+// @Description  Change the password of the authenticated user. Body: {"old_password": "string", "new_password": "string (min 6 chars)"}
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string             true  "Bearer <JWT_TOKEN>"
+// @Param        request        body      map[string]string  true  "Change password payload"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      400            {object}  map[string]interface{}
+ // @Router       /auth/change-password [patch]
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -279,6 +396,17 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 // ----------------------------
 // SOFT DELETE USER (14-day restore)
 // ----------------------------
+
+// DeleteUser godoc
+// @Summary      Delete my account (soft delete)
+// @Description  Schedules the authenticated user's account for deletion. It can be restored within 14 days.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string  true  "Bearer <JWT_TOKEN>"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      500            {object}  map[string]interface{}
+// @Router       /auth/delete-account [delete]
 func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -297,6 +425,17 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 // ----------------------------
 // RESTORE USER
 // ----------------------------
+
+// RestoreUser godoc
+// @Summary      Restore my account
+// @Description  Restore a soft-deleted account within the 14-day restore window
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string  true  "Bearer <JWT_TOKEN>"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      400            {object}  map[string]interface{}
+// @Router       /auth/restore-account [post]
 func (h *AuthHandler) RestoreUser(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -315,6 +454,18 @@ func (h *AuthHandler) RestoreUser(c *gin.Context) {
 // ----------------------------
 // FETCH ALL USERS (Admin only)
 // ----------------------------
+
+// FetchAllUsers godoc
+// @Summary      Get all users (admin)
+// @Description  Retrieve every user. Admin only.
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string  true  "Bearer <JWT_TOKEN>"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      403            {object}  map[string]interface{}
+// @Failure      500            {object}  map[string]interface{}
+// @Router       /admin/users [get]
 func (h *AuthHandler) FetchAllUsers(c *gin.Context) {
 	role := c.GetString("role")
 
@@ -344,6 +495,19 @@ func (h *AuthHandler) FetchAllUsers(c *gin.Context) {
 
 
 // GET /users?page=1&limit=10
+
+// GetPaginatedUsers godoc
+// @Summary      Get users (paginated)
+// @Description  Retrieve users with page-based pagination
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string  true   "Bearer <JWT_TOKEN>"
+// @Param        page           query     string  false  "Page number"
+// @Param        limit          query     string  false  "Items per page"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      500            {object}  map[string]interface{}
+// @Router       /users [get]
 func (h *AuthHandler) GetPaginatedUsers(c *gin.Context) {
 	page := c.Query("page")
 	limit := c.Query("limit")
@@ -362,6 +526,20 @@ func (h *AuthHandler) GetPaginatedUsers(c *gin.Context) {
 }
 
 // PATCH /users/:id/role
+
+// UpdateUserRole godoc
+// @Summary      Update a user's role
+// @Description  Change the role of a specific user. Body: {"role": "string"}
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string             true  "Bearer <JWT_TOKEN>"
+// @Param        id             path      string             true  "User UUID"
+// @Param        request        body      map[string]string  true  "Role payload"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      400            {object}  map[string]interface{}
+// @Failure      500            {object}  map[string]interface{}
+// @Router       /users/{id}/role [patch]
 func (h *AuthHandler) UpdateUserRole(c *gin.Context) {
 	id := c.Param("id")
 
@@ -387,6 +565,18 @@ func (h *AuthHandler) UpdateUserRole(c *gin.Context) {
 
 
 // CreateUserHandler handles POST /users
+
+// CreateUserHandler godoc
+// @Summary      Create a user
+// @Description  Create a new user. The password is removed from the response.
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string       true  "Bearer <JWT_TOKEN>"
+// @Param        request        body      models.User  true  "User payload"
+// @Success      201            {object}  models.User
+// @Failure      400            {object}  map[string]interface{}
+// @Router       /users [post]
 func (h *AuthHandler) CreateUserHandler(c *gin.Context) {
 	var input models.User
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -407,6 +597,19 @@ func (h *AuthHandler) CreateUserHandler(c *gin.Context) {
 }
 
 // UpdateUserHandler handles PATCH /users/:id
+
+// UpdateUserHandler godoc
+// @Summary      Update a user
+// @Description  Update the details of a specific user by ID
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string       true  "Bearer <JWT_TOKEN>"
+// @Param        id             path      string       true  "User UUID"
+// @Param        request        body      models.User  true  "User payload"
+// @Success      200            {object}  map[string]interface{}
+// @Failure      400            {object}  map[string]interface{}
+// @Router       /users/{id} [patch]
 func (h *AuthHandler) UpdateUserHandler(c *gin.Context) {
 	userID := c.Param("id")
 	var input models.User

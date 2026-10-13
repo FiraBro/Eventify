@@ -6,7 +6,9 @@ MIGRATE_PATH=./cmd/migrate/migration
 DB_USER=local_go_user
 DB_PASSWORD=password
 DB_NAME=local_go_db
-DB_HOST=localhost
+
+# 🚀 FIX: Pointing to the internal Docker DB service container name and native port
+DB_HOST=db
 DB_PORT=5432
 
 DB_ADDR=postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
