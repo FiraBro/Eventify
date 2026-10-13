@@ -19,6 +19,7 @@ import (
 
 	"github.com/FiraBro/local-go/internal/config"
 	"github.com/FiraBro/local-go/internal/db"
+	"github.com/FiraBro/local-go/internal/gateways"
 	"github.com/FiraBro/local-go/internal/handlers"
 	"github.com/FiraBro/local-go/internal/repositories"
 	"github.com/FiraBro/local-go/internal/routes"
@@ -47,23 +48,41 @@ func main() {
 	staffRepo := repositories.NewStaffRepository(dbConn)
 	serviceRepo := repositories.NewServiceRepository(dbConn)
 	bookingRepo := repositories.NewBookingRepository(dbConn)
+	paymentRepo := repositories.NewPaymentRepository(dbConn)
 	refreshRepo := repositories.NewRefreshTokenRepository(dbConn)
 	resetRepo := repositories.NewResetTokenRepository(dbConn)
 
-	// 4. Services
+
+	// ------------------------
+	// 4. Gateways
+	// ------------------------
+	chapaGateway := gateways.NewChapaGateway(
+		os.Getenv("CHAPA_SECRET_KEY"),
+		os.Getenv("CHAPA_WEBHOOK_SECRET"),
+	)
+
+	// 5. Services
 	authService := services.NewAuthService(userRepo, refreshRepo, resetRepo)
 	staffService := services.NewStaffService(staffRepo, serviceRepo)
 	availabilityService := services.NewAvailabilityService(staffRepo)
 	serviceService := services.NewServiceService(serviceRepo)
 	bookingService := services.NewBookingService(bookingRepo, serviceRepo)
 
-	// 5. Handlers
+		// PaymentService reads bookings + service prices and talks to the payment gateway
+	paymentService := services.NewPaymentService(paymentRepo, bookingRepo, serviceRepo, chapaGateway, services.PaymentConfig{
+		CallbackURL: os.Getenv("CHAPA_CALLBACK_URL"), // public URL of POST /payments/webhook
+		ReturnURL:   os.Getenv("CHAPA_RETURN_URL"),
+		Currency:    "ETB",
+	})
+
+	// 6. Handlers
 	authHandler := handlers.NewAuthHandler(authService)
 	staffHandler := handlers.NewStaffHandler(staffService, availabilityService)
 	serviceHandler := handlers.NewServiceHandler(serviceService)
 	bookingHandler := handlers.NewBookingHandler(bookingService)
+	paymentHandler := handlers.NewPaymentHandler(paymentService)
 
-	// 6. Router
+	// 7. Router
 	if os.Getenv("GIN_MODE") == "" && os.Getenv("APP_ENV") == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -82,13 +101,14 @@ func main() {
 	routes.StaffRoutes(api, staffHandler, userRepo)
 	routes.ServiceRoutes(api, serviceHandler, userRepo)
 	routes.BookingRoutes(api, bookingHandler, userRepo)
+	routes.PaymentRoutes(api, paymentHandler, userRepo)
 
 	// Swagger UI (disabled in production)
 	if os.Getenv("APP_ENV") != "production" {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	}
 
-	// 7. HTTP server with timeouts
+	// 8. HTTP server with timeouts
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
