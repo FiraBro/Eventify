@@ -50,6 +50,7 @@ func (h *PaymentHandler) Checkout(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid input data"})
 		return
 	}
+	req.Email = c.GetString("user_email")
 
 	payment, err := h.service.Checkout(c.Request.Context(), userID, &req)
 	if err != nil {

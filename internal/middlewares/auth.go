@@ -1,7 +1,6 @@
 package middlewares
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -55,7 +54,6 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 
 		// Fetch user from DB to validate soft deletion
 		user, err := userRepo.GetActiveByID(claims.UserID)
-		fmt.Println("USER FROM DB =", user.Role)
 		if err != nil || user.DeletedAt != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User no longer active"})
 			return
@@ -64,6 +62,7 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 		// Store info in context
 		c.Set("user_id", user.ID)
 		c.Set("role", user.Role)
+		c.Set("user_email", user.Email)
 
 		c.Next()
 	}
@@ -73,7 +72,6 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 func AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, exists := getStringFromContext(c, "role")
-     fmt.Println("ROLE FROM DB =", role)
 
 		if !exists || role != "admin" {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
@@ -93,7 +91,6 @@ func OwnerOrAdmin(getOwnerID func(c *gin.Context) string) gin.HandlerFunc {
 		}
 
 		role, _ := getStringFromContext(c, "role")
-     fmt.Println("ROLE FROM DB =", role)
 
 		ownerID := getOwnerID(c)
 

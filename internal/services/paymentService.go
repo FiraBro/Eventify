@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -92,8 +93,13 @@ func (s *PaymentService) loadBooking(ctx context.Context, bookingID, userID, rol
 // --------------------
 func (s *PaymentService) Checkout(ctx context.Context, userID string, req *models.CheckoutRequest) (*models.Payment, error) {
 	// 1. Business Validation
-	if req.BookingID == "" || strings.TrimSpace(req.Email) == "" {
+	email := strings.TrimSpace(req.Email)
+	if req.BookingID == "" || email == "" {
 		return nil, fmt.Errorf("%w: booking_id and email are required", ErrPaymentInvalidInput)
+	}
+	parsedEmail, err := mail.ParseAddress(email)
+	if err != nil || parsedEmail.Address != email {
+		return nil, fmt.Errorf("%w: a valid email address is required", ErrPaymentInvalidInput)
 	}
 
 	// 2. Only the owner can pay for a booking
@@ -150,7 +156,7 @@ func (s *PaymentService) Checkout(ctx context.Context, userID string, req *model
 	session, err := s.gateway.Initialize(ctx, &models.GatewayInitRequest{
 		Amount:      payment.Amount,
 		Currency:    payment.Currency,
-		Email:       strings.TrimSpace(req.Email),
+		Email:       email,
 		FirstName:   req.FirstName,
 		LastName:    req.LastName,
 		PhoneNumber: req.PhoneNumber,
