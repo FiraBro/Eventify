@@ -74,6 +74,8 @@ type ServicesReport struct {
 
 type StaffReportRow struct {
 	StaffID        string  `json:"staff_id"`
+	Name           string  `json:"name"`
+	Email          string  `json:"email"`
 	Bookings       int     `json:"bookings"`
 	Completed      int     `json:"completed"`
 	Cancelled      int     `json:"cancelled"`
@@ -90,6 +92,8 @@ type StaffPerformanceReport struct {
 
 type CustomerReportRow struct {
 	UserID        string    `json:"user_id"`
+	Username      string    `json:"username"`
+	Email         string    `json:"email"`
 	Bookings      int       `json:"bookings"`
 	Completed     int       `json:"completed"`
 	Cancelled     int       `json:"cancelled"`

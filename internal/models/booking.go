@@ -6,6 +6,7 @@ type Booking struct {
 	ID          string    `json:"id"`
 	UserID      string    `json:"user_id"`
 	ServiceID   string    `json:"service_id"`
+	StaffID     string    `json:"staff_id,omitempty"`
 	ScheduledAt time.Time `json:"scheduled_at"`
 	Status      string    `json:"status"`
 	Notes       string    `json:"notes"`
@@ -17,6 +18,7 @@ type Booking struct {
 type UpdateBookingRequest struct {
 	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
 	Notes       *string    `json:"notes,omitempty"`
+	StaffID     *string    `json:"staff_id,omitempty"` // admin only; "" clears the assignment
 }
 
 // DTO for PATCH /bookings/:id/status
