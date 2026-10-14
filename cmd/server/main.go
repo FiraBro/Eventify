@@ -53,6 +53,8 @@ func main() {
 	refreshRepo := repositories.NewRefreshTokenRepository(dbConn)
 	resetRepo := repositories.NewResetTokenRepository(dbConn)
 	reportRepo := repositories.NewReportRepository(dbConn)
+	settingsRepo := repositories.NewSettingsRepository(dbConn)
+	logRepo := repositories.NewLogRepository(dbConn)
 
 
 	// ------------------------
@@ -80,6 +82,10 @@ func main() {
 		notificationService := services.NewNotificationService(notificationRepo)
 		reportService := services.NewReportService(reportRepo)
 
+	// SettingsService: business-wide configuration. LogService: activity log written by the middleware below
+	settingsService := services.NewSettingsService(settingsRepo)
+	logService := services.NewLogService(logRepo)
+
 
 
 	// 6. Handlers
@@ -90,6 +96,8 @@ func main() {
 	paymentHandler := handlers.NewPaymentHandler(paymentService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService)
 	reportHandler := handlers.NewReportHandler(reportService)
+		settingsHandler := handlers.NewSettingsHandler(settingsService)
+	logHandler := handlers.NewLogHandler(logService)
 
 	// 7. Router
 	if os.Getenv("GIN_MODE") == "" && os.Getenv("APP_ENV") == "production" {
@@ -113,6 +121,8 @@ func main() {
 	routes.PaymentRoutes(api, paymentHandler, userRepo)
 	routes.NotificationRoutes(api, notificationHandler, userRepo)
 	routes.ReportRoutes(api, reportHandler, userRepo)
+	routes.SettingsRoutes(api, settingsHandler, userRepo)
+	routes.LogRoutes(api, logHandler, userRepo)
 
 	// Swagger UI (disabled in production)
 	if os.Getenv("APP_ENV") != "production" {
