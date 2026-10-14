@@ -61,6 +61,18 @@ func (r *PaymentRepository) Create(ctx context.Context, p *models.Payment) error
 }
 
 // --------------------
+// GET CUSTOMER CONTACT (from the users table)
+// --------------------
+func (r *PaymentRepository) GetUserContact(ctx context.Context, userID string) (email, username string, err error) {
+	err = r.db.QueryRowContext(ctx,
+		`SELECT email, username FROM users WHERE id = $1`, userID).Scan(&email, &username)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	return email, username, err
+}
+
+// --------------------
 // GET LATEST PAYMENT OF A BOOKING
 // --------------------
 func (r *PaymentRepository) GetLatestByBookingID(ctx context.Context, bookingID string) (*models.Payment, error) {

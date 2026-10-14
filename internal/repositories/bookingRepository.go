@@ -18,11 +18,11 @@ func NewBookingRepository(db *sql.DB) *BookingRepository {
 	return &BookingRepository{db: db}
 }
 
-const bookingColumns = `id, user_id, service_id, scheduled_at, status, notes, created_at, updated_at`
+const bookingColumns = `id, user_id, service_id, COALESCE(staff_id::text, ''), scheduled_at, status, notes, created_at, updated_at`
 
 func scanBooking(scan func(dest ...any) error) (models.Booking, error) {
 	var b models.Booking
-	err := scan(&b.ID, &b.UserID, &b.ServiceID, &b.ScheduledAt, &b.Status, &b.Notes, &b.CreatedAt, &b.UpdatedAt)
+	err := scan(&b.ID, &b.UserID, &b.ServiceID, &b.StaffID, &b.ScheduledAt, &b.Status, &b.Notes, &b.CreatedAt, &b.UpdatedAt)
 	return b, err
 }
 
@@ -53,11 +53,11 @@ func (r *BookingRepository) Create(ctx context.Context, b *models.Booking) error
 	b.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO bookings (id, user_id, service_id, scheduled_at, status, notes, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		INSERT INTO bookings (id, user_id, service_id, staff_id, scheduled_at, status, notes, created_at, updated_at)
+		VALUES ($1,$2,$3,NULLIF($4::text,'')::uuid,$5,$6,$7,$8,$9)
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		b.ID, b.UserID, b.ServiceID, b.ScheduledAt, b.Status, b.Notes, b.CreatedAt, b.UpdatedAt,
+		b.ID, b.UserID, b.ServiceID, b.StaffID, b.ScheduledAt, b.Status, b.Notes, b.CreatedAt, b.UpdatedAt,
 	)
 	return err
 }
@@ -104,11 +104,32 @@ func (r *BookingRepository) GetByID(ctx context.Context, id string) (*models.Boo
 func (r *BookingRepository) Update(ctx context.Context, id string, b *models.Booking) error {
 	query := `
 		UPDATE bookings
-		SET scheduled_at = $1, notes = $2, updated_at = $3
-		WHERE id = $4
+		SET scheduled_at = $1, notes = $2, staff_id = NULLIF($3::text,'')::uuid, updated_at = $4
+		WHERE id = $5
 	`
-	_, err := r.db.ExecContext(ctx, query, b.ScheduledAt, b.Notes, time.Now(), id)
+	_, err := r.db.ExecContext(ctx, query, b.ScheduledAt, b.Notes, b.StaffID, time.Now(), id)
 	return err
+}
+
+// --------------------
+// CHECK STAFF EXISTS
+// --------------------
+func (r *BookingRepository) StaffExists(ctx context.Context, staffID string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM staff WHERE id = $1)`, staffID).Scan(&exists)
+	return exists, err
+}
+
+// --------------------
+// CHECK STAFF OFFERS SERVICE (staff_services link table)
+// --------------------
+func (r *BookingRepository) StaffOffersService(ctx context.Context, staffID, serviceID string) (bool, error) {
+	var ok bool
+	err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM staff_services WHERE staff_id = $1 AND service_id = $2)`,
+		staffID, serviceID).Scan(&ok)
+	return ok, err
 }
 
 // --------------------

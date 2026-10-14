@@ -108,6 +108,6 @@ func (r *NotificationRepository) MarkRead(ctx context.Context, id, userID string
 func (r *NotificationRepository) UserExists(ctx context.Context, userID string) (bool, error) {
 	var exists bool
 	err := r.db.QueryRowContext(ctx,
-		`SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)`, userID).Scan(&exists)
+		`SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL)`, userID).Scan(&exists)
 	return exists, err
 }

@@ -171,15 +171,16 @@ func (r *ReportRepository) ServicePerformance(ctx context.Context, start, end ti
 // --------------------
 func (r *ReportRepository) StaffPerformance(ctx context.Context, start, end time.Time, limit int) ([]models.StaffReportRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT bk.staff_id::text,
+		SELECT st.id::text, st.name, st.email,
 		       COUNT(*),
 		       COUNT(*) FILTER (WHERE bk.status = 'completed'),
 		       COUNT(*) FILTER (WHERE bk.status = 'cancelled'),
 		       COALESCE(SUM(p.amount), 0)
 		FROM bookings bk
+		JOIN staff st ON st.id = bk.staff_id
 		LEFT JOIN payments p ON p.booking_id = bk.id AND p.status IN ('paid', 'refund_pending')
-		WHERE bk.staff_id IS NOT NULL AND bk.scheduled_at >= $1 AND bk.scheduled_at < $2
-		GROUP BY bk.staff_id
+		WHERE bk.scheduled_at >= $1 AND bk.scheduled_at < $2
+		GROUP BY st.id, st.name, st.email
 		ORDER BY COUNT(*) FILTER (WHERE bk.status = 'completed') DESC, COUNT(*) DESC
 		LIMIT $3
 	`, start, end, limit)
@@ -191,7 +192,7 @@ func (r *ReportRepository) StaffPerformance(ctx context.Context, start, end time
 	result := []models.StaffReportRow{}
 	for rows.Next() {
 		var s models.StaffReportRow
-		if err := rows.Scan(&s.StaffID, &s.Bookings, &s.Completed, &s.Cancelled, &s.Revenue); err != nil {
+		if err := rows.Scan(&s.StaffID, &s.Name, &s.Email, &s.Bookings, &s.Completed, &s.Cancelled, &s.Revenue); err != nil {
 			return nil, err
 		}
 		result = append(result, s)
@@ -204,16 +205,17 @@ func (r *ReportRepository) StaffPerformance(ctx context.Context, start, end time
 // --------------------
 func (r *ReportRepository) CustomerPerformance(ctx context.Context, start, end time.Time, limit int) ([]models.CustomerReportRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT bk.user_id::text,
+		SELECT u.id::text, u.username, u.email,
 		       COUNT(*),
 		       COUNT(*) FILTER (WHERE bk.status = 'completed'),
 		       COUNT(*) FILTER (WHERE bk.status = 'cancelled'),
 		       COALESCE(SUM(p.amount), 0),
 		       MAX(bk.scheduled_at)
 		FROM bookings bk
+		JOIN users u ON u.id = bk.user_id
 		LEFT JOIN payments p ON p.booking_id = bk.id AND p.status IN ('paid', 'refund_pending')
 		WHERE bk.scheduled_at >= $1 AND bk.scheduled_at < $2
-		GROUP BY bk.user_id
+		GROUP BY u.id, u.username, u.email
 		ORDER BY COALESCE(SUM(p.amount), 0) DESC, COUNT(*) DESC
 		LIMIT $3
 	`, start, end, limit)
@@ -225,7 +227,7 @@ func (r *ReportRepository) CustomerPerformance(ctx context.Context, start, end t
 	result := []models.CustomerReportRow{}
 	for rows.Next() {
 		var c models.CustomerReportRow
-		if err := rows.Scan(&c.UserID, &c.Bookings, &c.Completed, &c.Cancelled, &c.TotalSpent, &c.LastBookingAt); err != nil {
+		if err := rows.Scan(&c.UserID, &c.Username, &c.Email, &c.Bookings, &c.Completed, &c.Cancelled, &c.TotalSpent, &c.LastBookingAt); err != nil {
 			return nil, err
 		}
 		result = append(result, c)
