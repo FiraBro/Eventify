@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net/mail"
 	"strings"
 	"time"
 
@@ -93,13 +92,8 @@ func (s *PaymentService) loadBooking(ctx context.Context, bookingID, userID, rol
 // --------------------
 func (s *PaymentService) Checkout(ctx context.Context, userID string, req *models.CheckoutRequest) (*models.Payment, error) {
 	// 1. Business Validation
-	email := strings.TrimSpace(req.Email)
-	if req.BookingID == "" || email == "" {
-		return nil, fmt.Errorf("%w: booking_id and email are required", ErrPaymentInvalidInput)
-	}
-	parsedEmail, err := mail.ParseAddress(email)
-	if err != nil || parsedEmail.Address != email {
-		return nil, fmt.Errorf("%w: a valid email address is required", ErrPaymentInvalidInput)
+	if req.BookingID == "" {
+		return nil, fmt.Errorf("%w: booking_id is required", ErrPaymentInvalidInput)
 	}
 
 	// 2. Only the owner can pay for a booking
@@ -143,6 +137,25 @@ func (s *PaymentService) Checkout(ctx context.Context, userID string, req *model
 		return nil, fmt.Errorf("%w: service has no payable price", ErrPaymentInvalidInput)
 	}
 
+	// 4b. Customer contact: use the request values, else the account's own details
+	email := strings.TrimSpace(req.Email)
+	firstName := req.FirstName
+	if email == "" || firstName == "" {
+		accountEmail, username, err := s.repo.GetUserContact(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if email == "" {
+			email = accountEmail
+		}
+		if firstName == "" {
+			firstName = username
+		}
+	}
+	if email == "" {
+		return nil, fmt.Errorf("%w: email is required", ErrPaymentInvalidInput)
+	}
+
 	// 5. Create the checkout session at the provider
 	payment := &models.Payment{
 		BookingID: booking.ID,
@@ -157,7 +170,7 @@ func (s *PaymentService) Checkout(ctx context.Context, userID string, req *model
 		Amount:      payment.Amount,
 		Currency:    payment.Currency,
 		Email:       email,
-		FirstName:   req.FirstName,
+		FirstName:   firstName,
 		LastName:    req.LastName,
 		PhoneNumber: req.PhoneNumber,
 		TxRef:       payment.TxRef,

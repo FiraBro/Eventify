@@ -8,6 +8,7 @@ import (
 
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
+	"github.com/google/uuid"
 )
 
 var (
@@ -16,6 +17,8 @@ var (
 	ErrBookingNotEditable  = errors.New("booking can no longer be modified")
 	ErrInvalidTransition   = errors.New("invalid status transition")
 	ErrBookingInvalidInput = errors.New("invalid booking data")
+	ErrStaffNotFound       = errors.New("staff member not found")
+	ErrStaffServiceMismatch = errors.New("staff member does not offer this service")
 )
 
 const roleAdmin = "admin"
@@ -76,6 +79,13 @@ func (s *BookingService) Create(ctx context.Context, userID string, booking *mod
 		return ErrServiceNotFound
 	}
 
+	// 2b. Optional staff member must exist
+	if booking.StaffID != "" {
+		if err := s.checkStaff(ctx, booking.StaffID, booking.ServiceID); err != nil {
+			return err
+		}
+	}
+
 	// 3. Never trust client-provided ownership/status
 	booking.UserID = userID
 	booking.Status = bookingPending
@@ -126,6 +136,18 @@ func (s *BookingService) Update(ctx context.Context, id, userID, role string, re
 	}
 
 	// 3. Merge only provided fields
+	if req.StaffID != nil {
+		// only admins assign or change the staff member
+		if role != roleAdmin {
+			return nil, ErrBookingForbidden
+		}
+		if *req.StaffID != "" {
+			if err := s.checkStaff(ctx, *req.StaffID, existing.ServiceID); err != nil {
+				return nil, err
+			}
+		}
+		existing.StaffID = *req.StaffID
+	}
 	if req.ScheduledAt != nil {
 		if !req.ScheduledAt.After(time.Now()) {
 			return nil, fmt.Errorf("%w: scheduled_at must be in the future", ErrBookingInvalidInput)
@@ -178,4 +200,26 @@ func (s *BookingService) UpdateStatus(ctx context.Context, id, userID, role, new
 	existing.Status = newStatus
 	existing.UpdatedAt = time.Now()
 	return existing, nil
+}
+
+// checkStaff validates the id, that the staff member exists, and that they offer the service.
+func (s *BookingService) checkStaff(ctx context.Context, staffID, serviceID string) error {
+	if _, err := uuid.Parse(staffID); err != nil {
+		return fmt.Errorf("%w: staff_id must be a valid id", ErrBookingInvalidInput)
+	}
+	exists, err := s.repo.StaffExists(ctx, staffID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrStaffNotFound
+	}
+	offers, err := s.repo.StaffOffersService(ctx, staffID, serviceID)
+	if err != nil {
+		return err
+	}
+	if !offers {
+		return ErrStaffServiceMismatch
+	}
+	return nil
 }
