@@ -74,7 +74,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	})
 }
 
-
 // ----------------------------
 // LOGIN
 // ----------------------------
@@ -371,7 +370,7 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 // @Param        request        body      map[string]string  true  "Change password payload"
 // @Success      200            {object}  map[string]interface{}
 // @Failure      400            {object}  map[string]interface{}
- // @Router       /auth/change-password [patch]
+// @Router       /auth/change-password [patch]
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -385,7 +384,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.ChangePassword(userID, body. OldPassword, body.NewPassword); err != nil {
+	if err := h.authService.ChangePassword(userID, body.OldPassword, body.NewPassword); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
@@ -492,8 +491,6 @@ func (h *AuthHandler) FetchAllUsers(c *gin.Context) {
 	})
 }
 
-
-
 // GET /users?page=1&limit=10
 
 // GetPaginatedUsers godoc
@@ -559,10 +556,6 @@ func (h *AuthHandler) UpdateUserRole(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "role updated successfully"})
 }
-
-
-
-
 
 // CreateUserHandler handles POST /users
 

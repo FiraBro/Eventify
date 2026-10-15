@@ -75,7 +75,6 @@ func (s *AuthService) Register(user *models.User) error {
 	return s.userRepo.CreateUser(user)
 }
 
-
 // ----------------------------
 // LOGIN
 // ----------------------------
@@ -293,9 +292,6 @@ func (s *AuthService) PurgeExpiredDeletedUsers() {
 	}
 }
 
-
-
-
 // Fetch paginated users
 func (s *AuthService) FetchUsersPaginated(pageStr, limitStr string) ([]models.User, int, int, error) {
 	page, err := strconv.Atoi(pageStr)
@@ -324,9 +320,6 @@ func (s *AuthService) UpdateUserRole(id, role string) error {
 
 	return s.userRepo.UpdateUserRole(id, role)
 }
-
-
-
 
 // CreateUser handles hashing password and validating
 func (s *AuthService) CreateUser(user *models.User) error {

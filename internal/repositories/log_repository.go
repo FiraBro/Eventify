@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/FiraBro/local-go/internal/models"
@@ -38,51 +36,65 @@ func (r *LogRepository) Create(ctx context.Context, l *models.ActivityLog) error
 	return err
 }
 
+// Every filter is optional: a NULL parameter switches its condition off. The SQL below is a
+// constant, so no value is ever formatted into it; all user input travels as bound parameters.
+const logWhere = `
+	WHERE ($1::uuid IS NULL OR user_id = $1)
+	  AND ($2::text IS NULL OR method = $2)
+	  AND ($3::int IS NULL OR status_code = $3)
+	  AND ($4::text IS NULL OR path ILIKE $4 OR route ILIKE $4)
+	  AND ($5::timestamptz IS NULL OR created_at >= $5)
+	  AND ($6::timestamptz IS NULL OR created_at < $6)`
+
+const logCountSQL = `SELECT COUNT(*) FROM activity_logs` + logWhere
+
+const logListSQL = `
+	SELECT id, COALESCE(user_id::text, ''), role, method, path, route, status_code, ip, duration_ms, details, created_at
+	FROM activity_logs` + logWhere + `
+	ORDER BY created_at DESC
+	LIMIT $7 OFFSET $8`
+
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func nullIfZero(n int) any {
+	if n == 0 {
+		return nil
+	}
+	return n
+}
+
+func nullTime(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return *t
+}
+
 // --------------------
 // LIST LOGS (filtered, newest first)
 // --------------------
 func (r *LogRepository) List(ctx context.Context, f *models.LogFilter) ([]models.ActivityLog, int, error) {
-	where := []string{"1=1"}
-	args := []any{}
-	add := func(cond string, v any) {
-		args = append(args, v)
-		where = append(where, fmt.Sprintf(cond, len(args)))
+	filters := []any{
+		nullIfEmpty(f.UserID),
+		nullIfEmpty(f.Method),
+		nullIfZero(f.Status),
+		nullIfEmpty(likePattern(f.Q)),
+		nullTime(f.From),
+		nullTime(f.To),
 	}
-
-	if f.UserID != "" {
-		add("user_id = $%d", f.UserID)
-	}
-	if f.Method != "" {
-		add("method = $%d", f.Method)
-	}
-	if f.Status != 0 {
-		add("status_code = $%d", f.Status)
-	}
-	if f.Q != "" {
-		add(`(path ILIKE $%[1]d OR route ILIKE $%[1]d)`, "%"+f.Q+"%")
-	}
-	if f.From != nil {
-		add("created_at >= $%d", *f.From)
-	}
-	if f.To != nil {
-		add("created_at < $%d", *f.To)
-	}
-	clause := strings.Join(where, " AND ")
 
 	var total int
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM activity_logs WHERE `+clause, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, logCountSQL, filters...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	args = append(args, f.Limit, f.Offset)
-	query := fmt.Sprintf(`
-		SELECT id, COALESCE(user_id::text, ''), role, method, path, route, status_code, ip, duration_ms, details, created_at
-		FROM activity_logs
-		WHERE %s
-		ORDER BY created_at DESC
-		LIMIT $%d OFFSET $%d`, clause, len(args)-1, len(args))
-
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	listArgs := append(append([]any{}, filters...), f.Limit, f.Offset)
+	rows, err := r.db.QueryContext(ctx, logListSQL, listArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -102,4 +114,12 @@ func (r *LogRepository) List(ctx context.Context, f *models.LogFilter) ([]models
 		items = append(items, l)
 	}
 	return items, total, rows.Err()
+}
+
+// likePattern wraps an already-escaped search term for ILIKE; an empty term means "no filter".
+func likePattern(q string) string {
+	if q == "" {
+		return ""
+	}
+	return "%" + q + "%"
 }

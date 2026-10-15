@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"net/http"
+
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/services"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

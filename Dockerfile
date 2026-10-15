@@ -1,5 +1,7 @@
-# Use official Go image
-FROM golang:1.25-alpine
+# Use official Go image.
+# Must match the "toolchain" line in go.mod: official golang images set GOTOOLCHAIN=local, so the
+# build fails if the image is older than go.mod requires. Bump this tag whenever the toolchain is bumped.
+FROM golang:1.26.9-alpine
 
 # Install required tools
 RUN apk add --no-cache bash git make
@@ -7,8 +9,10 @@ RUN apk add --no-cache bash git make
 # Install Air with a Go version compatible release
 RUN go install github.com/air-verse/air@v1.61.1
 
-# Install migrate CLI with postgres driver support
-RUN go install -tags "postgres" github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+# Install migrate CLI with postgres driver support.
+# Pinned to the version already running in the previous image (v4.20.1), so rebuilds are reproducible.
+ARG MIGRATE_VERSION=v4.20.1
+RUN go install -tags "postgres" github.com/golang-migrate/migrate/v4/cmd/migrate@${MIGRATE_VERSION}
 
 # Install swag CLI for generating Swagger docs
 RUN go install github.com/swaggo/swag/cmd/swag@v1.16.4

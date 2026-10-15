@@ -12,12 +12,12 @@ import (
 )
 
 var (
-	ErrBookingNotFound     = errors.New("booking not found")
-	ErrBookingForbidden    = errors.New("you do not have access to this booking")
-	ErrBookingNotEditable  = errors.New("booking can no longer be modified")
-	ErrInvalidTransition   = errors.New("invalid status transition")
-	ErrBookingInvalidInput = errors.New("invalid booking data")
-	ErrStaffNotFound       = errors.New("staff member not found")
+	ErrBookingNotFound      = errors.New("booking not found")
+	ErrBookingForbidden     = errors.New("you do not have access to this booking")
+	ErrBookingNotEditable   = errors.New("booking can no longer be modified")
+	ErrInvalidTransition    = errors.New("invalid status transition")
+	ErrBookingInvalidInput  = errors.New("invalid booking data")
+	ErrStaffNotFound        = errors.New("staff member not found")
 	ErrStaffServiceMismatch = errors.New("staff member does not offer this service")
 )
 

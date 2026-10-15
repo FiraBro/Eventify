@@ -104,27 +104,27 @@ func (s *StaffService) AssignServices(ctx context.Context, staffID string, servi
 // ---------- SCHEDULE & HOLIDAYS ----------
 
 func (s *StaffService) GetSchedule(ctx context.Context, staffID string) ([]map[string]string, error) {
-    // FIXED: Your repo's GetAvailabilityData returns ([]map, []string, error)
-    // We only want the first return value here.
+	// FIXED: Your repo's GetAvailabilityData returns ([]map, []string, error)
+	// We only want the first return value here.
 	schedule, _, err := s.staffRepo.GetAvailabilityData(ctx, staffID)
 	return schedule, err
 }
 
 func (s *StaffService) SetSchedule(ctx context.Context, id string, entries []map[string]string) error {
 
-// Business logic: Ensure hours are valid (e.g., 09:00 - 17:00)
+	// Business logic: Ensure hours are valid (e.g., 09:00 - 17:00)
 
-for _, entry := range entries {
+	for _, entry := range entries {
 
-if entry["day"] == "" || entry["start"] == "" || entry["end"] == "" {
+		if entry["day"] == "" || entry["start"] == "" || entry["end"] == "" {
 
-return errors.New("invalid schedule format: day, start, and end are required")
+			return errors.New("invalid schedule format: day, start, and end are required")
 
-}
+		}
 
-}
+	}
 
-return s.staffRepo.SetSchedule(ctx, id, entries)
+	return s.staffRepo.SetSchedule(ctx, id, entries)
 
 }
 

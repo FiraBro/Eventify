@@ -16,13 +16,13 @@ import (
 )
 
 var (
-	ErrPaymentInvalidInput   = errors.New("invalid payment data")
-	ErrPaymentNotFound       = errors.New("payment not found")
-	ErrBookingNotPayable     = errors.New("booking cannot be paid in its current status")
-	ErrAlreadyPaid           = errors.New("booking is already paid")
-	ErrPaymentNotRefundable  = errors.New("payment cannot be refunded")
-	ErrInvalidSignature      = errors.New("invalid webhook signature")
-	ErrPaymentGateway        = errors.New("payment provider error")
+	ErrPaymentInvalidInput  = errors.New("invalid payment data")
+	ErrPaymentNotFound      = errors.New("payment not found")
+	ErrBookingNotPayable    = errors.New("booking cannot be paid in its current status")
+	ErrAlreadyPaid          = errors.New("booking is already paid")
+	ErrPaymentNotRefundable = errors.New("payment cannot be refunded")
+	ErrInvalidSignature     = errors.New("invalid webhook signature")
+	ErrPaymentGateway       = errors.New("payment provider error")
 )
 
 const (

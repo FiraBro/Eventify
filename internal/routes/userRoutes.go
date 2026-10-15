@@ -40,4 +40,3 @@ func UserRoutes(api *gin.RouterGroup, authHandler *handlers.AuthHandler, userRep
 	// Single user fetch (any authenticated user)
 	api.GET("/users/:id", authMW, authHandler.GetUserByID)
 }
-

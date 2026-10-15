@@ -113,20 +113,19 @@ func (r *ServiceRepository) GetByIDs(ctx context.Context, id string) (*models.Se
 	return &s, nil
 }
 
-
 // --------------------
 // UPDATE SERVICE
 // --------------------
 func (r *ServiceRepository) Update(ctx context.Context, id string, s *models.Service) error {
-    query := `
+	query := `
         UPDATE services
         SET name = $1, description = $2, category = $3, price = $4, updated_at = $5
         WHERE id = $6
     `
-    _, err := r.db.ExecContext(ctx, query, 
-        s.Name, s.Description, s.Category, s.Price, time.Now(), id,
-    )
-    return err
+	_, err := r.db.ExecContext(ctx, query,
+		s.Name, s.Description, s.Category, s.Price, time.Now(), id,
+	)
+	return err
 }
 
 // --------------------

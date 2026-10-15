@@ -132,31 +132,27 @@ func (h *StaffHandler) GetSchedule(c *gin.Context) {
 
 func (h *StaffHandler) SetSchedule(c *gin.Context) {
 
-id := c.Param("id")
+	id := c.Param("id")
 
-var body []map[string]string // Ideally use []models.ScheduleEntry
+	var body []map[string]string // Ideally use []models.ScheduleEntry
 
+	if err := c.ShouldBindJSON(&body); err != nil {
 
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid schedule format"})
 
-if err := c.ShouldBindJSON(&body); err != nil {
+		return
 
-c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid schedule format"})
+	}
 
-return
+	if err := h.service.SetSchedule(c.Request.Context(), id, body); err != nil {
 
-}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set schedule"})
 
+		return
 
+	}
 
-if err := h.service.SetSchedule(c.Request.Context(), id, body); err != nil {
-
-c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set schedule"})
-
-return
-
-}
-
-c.JSON(http.StatusOK, gin.H{"success": true})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 
 }
 

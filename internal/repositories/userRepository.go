@@ -238,7 +238,6 @@ func (r *UserRepository) PermanentlyDeleteExpired() error {
 	return err
 }
 
-
 // ----------------------------
 // UPDATE USER ROLE
 // ----------------------------

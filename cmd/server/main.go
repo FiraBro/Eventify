@@ -56,7 +56,6 @@ func main() {
 	settingsRepo := repositories.NewSettingsRepository(dbConn)
 	logRepo := repositories.NewLogRepository(dbConn)
 
-
 	// ------------------------
 	// 4. Gateways
 	// ------------------------
@@ -72,21 +71,19 @@ func main() {
 	serviceService := services.NewServiceService(serviceRepo)
 	bookingService := services.NewBookingService(bookingRepo, serviceRepo)
 
-		// PaymentService reads bookings + service prices and talks to the payment gateway
+	// PaymentService reads bookings + service prices and talks to the payment gateway
 	paymentService := services.NewPaymentService(paymentRepo, bookingRepo, serviceRepo, chapaGateway, services.PaymentConfig{
 		CallbackURL: os.Getenv("CHAPA_CALLBACK_URL"), // public URL of POST /payments/webhook
 		ReturnURL:   os.Getenv("CHAPA_RETURN_URL"),
 		Currency:    "ETB",
 	})
 
-		notificationService := services.NewNotificationService(notificationRepo)
-		reportService := services.NewReportService(reportRepo)
+	notificationService := services.NewNotificationService(notificationRepo)
+	reportService := services.NewReportService(reportRepo)
 
 	// SettingsService: business-wide configuration. LogService: activity log written by the middleware below
 	settingsService := services.NewSettingsService(settingsRepo)
 	logService := services.NewLogService(logRepo)
-
-
 
 	// 6. Handlers
 	authHandler := handlers.NewAuthHandler(authService)
@@ -96,7 +93,7 @@ func main() {
 	paymentHandler := handlers.NewPaymentHandler(paymentService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService)
 	reportHandler := handlers.NewReportHandler(reportService)
-		settingsHandler := handlers.NewSettingsHandler(settingsService)
+	settingsHandler := handlers.NewSettingsHandler(settingsService)
 	logHandler := handlers.NewLogHandler(logService)
 
 	// 7. Router
