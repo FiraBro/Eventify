@@ -1,3 +1,11 @@
+# secrets and local config
+.env
+.env.*
+!.env.example
+
+# build and tool output
 bin/
 tmp/
 lint.txt
+coverage.out
+*.test

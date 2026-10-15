@@ -127,7 +127,7 @@ func (r *StaffRepository) AssignServices(ctx context.Context, staffID string, se
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	// 1. Clear current assignments
 	if _, err := tx.ExecContext(ctx, `DELETE FROM staff_services WHERE staff_id = $1`, staffID); err != nil {
@@ -155,7 +155,7 @@ func (r *StaffRepository) SetSchedule(ctx context.Context, staffID string, entri
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM staff_schedule WHERE staff_id = $1`, staffID); err != nil {
 		return err

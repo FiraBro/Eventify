@@ -7,6 +7,6 @@ type Event struct {
 	Name        string    `json:"name" binding:"required"`
 	Description string    `json:"description" binding:"required"`
 	Location    string    `json:"location" binding:"required"`
-	UserId      string    `json:"user_id"`
+	UserID      string    `json:"user_id"`
 	DateTime    time.Time `json:"date_time"`
 }

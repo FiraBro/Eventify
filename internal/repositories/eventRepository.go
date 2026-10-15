@@ -33,7 +33,7 @@ func (r *EventRepository) Create(event *models.Event) error {
 		event.Name,
 		event.Description,
 		event.Location,
-		event.UserId,
+		event.UserID,
 		event.DateTime,
 	)
 	return err
@@ -60,7 +60,7 @@ func (r *EventRepository) GetAll() ([]models.Event, error) {
 			&e.Name,
 			&e.Description,
 			&e.Location,
-			&e.UserId,
+			&e.UserID,
 			&e.DateTime,
 		); err != nil {
 			return nil, err
@@ -86,7 +86,7 @@ func (r *EventRepository) GetByID(id string) (*models.Event, error) {
 		&e.Name,
 		&e.Description,
 		&e.Location,
-		&e.UserId,
+		&e.UserID,
 		&e.DateTime,
 	); err != nil {
 		return nil, err
@@ -112,7 +112,7 @@ func (r *EventRepository) Update(event *models.Event) error {
 		event.Name,
 		event.Description,
 		event.Location,
-		event.UserId,
+		event.UserID,
 		event.DateTime,
 		event.ID,
 	)

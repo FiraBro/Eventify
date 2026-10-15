@@ -47,7 +47,7 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 		}
 
 		// Optional: check token expiry
-		if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
+		if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
 			return
 		}

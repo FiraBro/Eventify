@@ -88,9 +88,3 @@ func (s *ServiceService) Delete(ctx context.Context, id string) error {
 func (s *ServiceService) GetCategories(ctx context.Context) ([]string, error) {
 	return s.repo.GetCategories(ctx)
 }
-
-// NEW: Search/Filter Logic
-func (s *ServiceService) GetByCategory(ctx context.Context, category string) ([]models.Service, error) {
-	// You would need to add a Filter method to your repository to support this
-	return nil, errors.New("not implemented")
-}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -142,8 +143,8 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("✅ Server running on http://localhost:%s%s", port, apiBasePath)
-		log.Printf("📊 Swagger docs: http://localhost:%s/swagger/index.html", port)
+		slog.Info("server running", "port", port, "base_path", apiBasePath)
+		slog.Info("swagger docs available", "url", "http://localhost:"+port+"/swagger/index.html")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("❌ Server failed: %v", err)
 		}
