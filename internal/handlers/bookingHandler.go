@@ -48,18 +48,28 @@ func bookingError(c *gin.Context, err error) {
 func (h *BookingHandler) Create(c *gin.Context) {
 	userID, _ := currentUser(c)
 
-	var req models.Booking
+	var req models.CreateBookingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid input data"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid input data",
+		})
 		return
 	}
 
-	if err := h.service.Create(c.Request.Context(), userID, &req); err != nil {
+	booking := models.Booking{
+		ServiceID:   req.ServiceID,
+		StaffID:     req.StaffID,
+		ScheduledAt: req.ScheduledAt,
+		Notes:       req.Notes,
+	}
+
+	if err := h.service.Create(c.Request.Context(), userID, &booking); err != nil {
 		bookingError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": req})
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": booking})
 }
 
 // GET /bookings (admin)

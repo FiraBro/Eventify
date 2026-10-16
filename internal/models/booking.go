@@ -2,6 +2,14 @@ package models
 
 import "time"
 
+// CreateBookingRequest contains fields accepted from the client.
+type CreateBookingRequest struct {
+	ServiceID   string    `json:"service_id" binding:"required,uuid"`
+	StaffID     string    `json:"staff_id,omitempty" binding:"omitempty,uuid"`
+	ScheduledAt time.Time `json:"scheduled_at" binding:"required"`
+	Notes       string    `json:"notes" binding:"max=1000"`
+}
+
 type Booking struct {
 	ID          string    `json:"id"`
 	UserID      string    `json:"user_id"`

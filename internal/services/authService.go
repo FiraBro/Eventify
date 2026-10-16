@@ -304,6 +304,19 @@ func (s *AuthService) FetchUsersPaginated(pageStr, limitStr string) ([]models.Us
 		limit = 10
 	}
 
+	// Prevent excessive database queries.
+	const maxLimit = 100
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
+	// Prevent integer overflow in (page - 1) * limit.
+	// Cap the offset at a practical maximum.
+	const maxOffset = 100000
+	if page > (maxOffset/limit)+1 {
+		page = (maxOffset / limit) + 1
+	}
+
 	users, err := s.userRepo.FetchUsersPaginated(page, limit)
 	if err != nil {
 		return nil, 0, 0, err
