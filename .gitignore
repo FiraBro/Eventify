@@ -10,3 +10,4 @@ lint.txt
 coverage.out
 *.testschema_*.sql
 *.dump
+schema_*.sql
