@@ -14,6 +14,21 @@ var (
 	ErrInvalidInput    = errors.New("invalid input data")
 )
 
+const (
+	defaultServiceDurationMinutes = 60
+	minServiceDurationMinutes     = 5
+	maxServiceDurationMinutes     = 24 * 60
+)
+
+// checkDuration validates the length of the slot a service occupies.
+func checkDuration(minutes int) error {
+	if minutes < minServiceDurationMinutes || minutes > maxServiceDurationMinutes {
+		return fmt.Errorf("%w: duration_minutes must be between %d and %d",
+			ErrInvalidInput, minServiceDurationMinutes, maxServiceDurationMinutes)
+	}
+	return nil
+}
+
 type ServiceService struct {
 	repo *repositories.ServiceRepository
 }
@@ -26,6 +41,12 @@ func (s *ServiceService) Create(ctx context.Context, service *models.Service) er
 	// 1. Business Validation
 	if service.Name == "" || service.Price < 0 {
 		return fmt.Errorf("%w: name is required and price must be positive", ErrInvalidInput)
+	}
+	if service.DurationMinutes == 0 {
+		service.DurationMinutes = defaultServiceDurationMinutes // field omitted by the client
+	}
+	if err := checkDuration(service.DurationMinutes); err != nil {
+		return err
 	}
 
 	// 2. Call Repo
@@ -47,8 +68,6 @@ func (s *ServiceService) GetByID(ctx context.Context, id string) (*models.Servic
 	return service, nil
 }
 
-// internal/services/service_service.go
-
 func (s *ServiceService) Update(ctx context.Context, id string, req *models.UpdateServiceRequest) (*models.Service, error) {
 	// 1. Fetch current data from REPO
 	existing, err := s.repo.GetByIDs(ctx, id)
@@ -56,7 +75,7 @@ func (s *ServiceService) Update(ctx context.Context, id string, req *models.Upda
 		return nil, err
 	}
 	if existing == nil {
-		return nil, errors.New("service not found")
+		return nil, ErrServiceNotFound
 	}
 
 	// 2. Merge only the fields that were provided
@@ -71,6 +90,12 @@ func (s *ServiceService) Update(ctx context.Context, id string, req *models.Upda
 	}
 	if req.Price != nil {
 		existing.Price = *req.Price
+	}
+	if req.DurationMinutes != nil {
+		if err := checkDuration(*req.DurationMinutes); err != nil {
+			return nil, err
+		}
+		existing.DurationMinutes = *req.DurationMinutes
 	}
 
 	// 3. Save to database via REPO

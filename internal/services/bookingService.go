@@ -19,6 +19,7 @@ var (
 	ErrBookingInvalidInput  = errors.New("invalid booking data")
 	ErrStaffNotFound        = errors.New("staff member not found")
 	ErrStaffServiceMismatch = errors.New("staff member does not offer this service")
+	ErrBookingConflict      = errors.New("this time slot is no longer available for the selected staff member")
 )
 
 const roleAdmin = "admin"
@@ -86,12 +87,14 @@ func (s *BookingService) Create(ctx context.Context, userID string, booking *mod
 		}
 	}
 
-	// 3. Never trust client-provided ownership/status
+	// 3. Never trust client-provided ownership, status or end time
 	booking.UserID = userID
 	booking.Status = bookingPending
+	booking.ScheduledAt = booking.ScheduledAt.UTC()
+	booking.EndAt = endAtFor(booking.ScheduledAt, svc.DurationMinutes)
 
-	// 4. Call Repo
-	return s.repo.Create(ctx, booking)
+	// 4. Call Repo (the database rejects an overlapping slot for the same staff member)
+	return translateBookingWriteError(s.repo.Create(ctx, booking))
 }
 
 // Admin only (route middleware guards it, service re-checks)
@@ -152,14 +155,15 @@ func (s *BookingService) Update(ctx context.Context, id, userID, role string, re
 		if !req.ScheduledAt.After(time.Now()) {
 			return nil, fmt.Errorf("%w: scheduled_at must be in the future", ErrBookingInvalidInput)
 		}
-		existing.ScheduledAt = *req.ScheduledAt
+		// keep the booked duration when the start time moves
+		existing.ScheduledAt, existing.EndAt = reschedule(existing.ScheduledAt, existing.EndAt, req.ScheduledAt.UTC())
 	}
 	if req.Notes != nil {
 		existing.Notes = *req.Notes
 	}
 
-	// 4. Save
-	if err := s.repo.Update(ctx, id, existing); err != nil {
+	// 4. Save (an overlap with the same staff member's other bookings is rejected by the database)
+	if err := translateBookingWriteError(s.repo.Update(ctx, id, existing)); err != nil {
 		return nil, err
 	}
 	return existing, nil
@@ -222,4 +226,22 @@ func (s *BookingService) checkStaff(ctx context.Context, staffID, serviceID stri
 		return ErrStaffServiceMismatch
 	}
 	return nil
+}
+
+// endAtFor returns the end of a slot that starts at start and lasts minutes.
+func endAtFor(start time.Time, minutes int) time.Time {
+	return start.Add(time.Duration(minutes) * time.Minute)
+}
+
+// reschedule moves a booking to newStart and keeps the duration it was booked with.
+func reschedule(oldStart, oldEnd, newStart time.Time) (start, end time.Time) {
+	return newStart, newStart.Add(oldEnd.Sub(oldStart))
+}
+
+// translateBookingWriteError maps the repository's overlap error to the service-level conflict error.
+func translateBookingWriteError(err error) error {
+	if errors.Is(err, repositories.ErrSlotConflict) {
+		return ErrBookingConflict
+	}
+	return err
 }
