@@ -707,6 +707,5 @@ This project is licensed under the MIT License, provided that the repository inc
 
 ---
 
-**Maintainer:** Add your name or GitHub username.
+**Maintainer:**FiraBro.
 
-**Repository:** Replace the placeholder repository links and CI badge with your actual GitHub repository details.
