@@ -614,6 +614,18 @@ Run the Go test suite:
 go test ./...
 ```
 
+Run the PostgreSQL integration smoke test against a disposable Testcontainers database:
+
+```bash
+go test -tags=integration -count=1 ./tests/integration
+```
+
+The integration test requires a running Docker daemon and pulls `postgres:16.3` if it is not
+available locally. It starts its own container with generated credentials and does not read
+`DB_ADDR` or fall back to a developer database. The test applies `cmd/migrate/migration` using
+the same golang-migrate version as the Docker image, then verifies connectivity and migration
+version 18. Container and database resources are cleaned up when the test ends.
+
 Run tests with the race detector:
 
 ```bash

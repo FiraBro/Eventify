@@ -36,4 +36,11 @@ if diff -u <(dump "$SCRATCH") <(dump "$LIVE"); then
 else
   echo "schema-check: FAILED, the differences are shown above" >&2
   exit 1
-fi
+fi1. Goal
+Added sequential and concurrent integration tests for duplicate delivery of the same valid payment webhook. They exercise the real registered payment route, handler, service, repositories, and disposable PostgreSQL database.
+
+2. Files Changed
+Created webhook_idempotency_test.go. No production files, schema, migrations, or existing booking-concurrency test were changed in this substep. Other modified files currently shown in the working tree were already present from earlier work.
+
+3. Complete Code
+The complete test imp
