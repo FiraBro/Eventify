@@ -12,7 +12,7 @@ MIGRATIONS_PATH := ./cmd/migrate/migration
 # Number of migrations `make migrate-down` reverts. Override: make migrate-down STEPS=2
 STEPS ?= 1
 
-.PHONY: build run test lint fmt vuln tools migrate-up migrate-down
+.PHONY: build run test lint fmt vuln tools migrate-up migrate-down schema-check
 
 build:
 	go build -trimpath -o $(BINARY) ./cmd/server
@@ -46,3 +46,7 @@ migrate-up:
 
 migrate-down:
 	docker compose exec -T api sh -c '/go/bin/migrate -path=$(MIGRATIONS_PATH) -database "$$DB_ADDR" down $(STEPS)'
+
+# Proves that the migrations alone reproduce the live schema (scratch database; live is only read).
+schema-check:
+	bash scripts/schema-check.sh

@@ -8,4 +8,5 @@ bin/
 tmp/
 lint.txt
 coverage.out
-*.test
+*.testschema_*.sql
+*.dump
