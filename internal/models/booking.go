@@ -8,6 +8,7 @@ type Booking struct {
 	ServiceID   string    `json:"service_id"`
 	StaffID     string    `json:"staff_id,omitempty"`
 	ScheduledAt time.Time `json:"scheduled_at"`
+	EndAt       time.Time `json:"end_at"` // computed by the server, never read from the client
 	Status      string    `json:"status"`
 	Notes       string    `json:"notes"`
 	CreatedAt   time.Time `json:"created_at"`
