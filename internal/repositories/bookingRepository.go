@@ -8,6 +8,7 @@ import (
 
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type BookingRepository struct {
@@ -18,11 +19,29 @@ func NewBookingRepository(db *sql.DB) *BookingRepository {
 	return &BookingRepository{db: db}
 }
 
-const bookingColumns = `id, user_id, service_id, COALESCE(staff_id::text, ''), scheduled_at, status, notes, created_at, updated_at`
+// ErrSlotConflict means the database rejected a booking because it overlaps another ACTIVE booking
+// of the same staff member (exclusion constraint bookings_no_staff_overlap).
+var ErrSlotConflict = errors.New("booking slot conflict")
+
+const (
+	exclusionViolation       pq.ErrorCode = "23P01"
+	bookingOverlapConstraint              = "bookings_no_staff_overlap"
+)
+
+// mapBookingWriteError turns the overlap violation into ErrSlotConflict; other errors pass through.
+func mapBookingWriteError(err error) error {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == exclusionViolation && pqErr.Constraint == bookingOverlapConstraint {
+		return ErrSlotConflict
+	}
+	return err
+}
+
+const bookingColumns = `id, user_id, service_id, COALESCE(staff_id::text, ''), scheduled_at, end_at, status, notes, created_at, updated_at`
 
 func scanBooking(scan func(dest ...any) error) (models.Booking, error) {
 	var b models.Booking
-	err := scan(&b.ID, &b.UserID, &b.ServiceID, &b.StaffID, &b.ScheduledAt, &b.Status, &b.Notes, &b.CreatedAt, &b.UpdatedAt)
+	err := scan(&b.ID, &b.UserID, &b.ServiceID, &b.StaffID, &b.ScheduledAt, &b.EndAt, &b.Status, &b.Notes, &b.CreatedAt, &b.UpdatedAt)
 	return b, err
 }
 
@@ -53,13 +72,13 @@ func (r *BookingRepository) Create(ctx context.Context, b *models.Booking) error
 	b.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO bookings (id, user_id, service_id, staff_id, scheduled_at, status, notes, created_at, updated_at)
-		VALUES ($1,$2,$3,NULLIF($4::text,'')::uuid,$5,$6,$7,$8,$9)
+		INSERT INTO bookings (id, user_id, service_id, staff_id, scheduled_at, end_at, status, notes, created_at, updated_at)
+		VALUES ($1,$2,$3,NULLIF($4::text,'')::uuid,$5,$6,$7,$8,$9,$10)
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		b.ID, b.UserID, b.ServiceID, b.StaffID, b.ScheduledAt, b.Status, b.Notes, b.CreatedAt, b.UpdatedAt,
+		b.ID, b.UserID, b.ServiceID, b.StaffID, b.ScheduledAt, b.EndAt, b.Status, b.Notes, b.CreatedAt, b.UpdatedAt,
 	)
-	return err
+	return mapBookingWriteError(err)
 }
 
 // --------------------
@@ -104,11 +123,11 @@ func (r *BookingRepository) GetByID(ctx context.Context, id string) (*models.Boo
 func (r *BookingRepository) Update(ctx context.Context, id string, b *models.Booking) error {
 	query := `
 		UPDATE bookings
-		SET scheduled_at = $1, notes = $2, staff_id = NULLIF($3::text,'')::uuid, updated_at = $4
-		WHERE id = $5
+		SET scheduled_at = $1, end_at = $2, notes = $3, staff_id = NULLIF($4::text,'')::uuid, updated_at = $5
+		WHERE id = $6
 	`
-	_, err := r.db.ExecContext(ctx, query, b.ScheduledAt, b.Notes, b.StaffID, time.Now(), id)
-	return err
+	_, err := r.db.ExecContext(ctx, query, b.ScheduledAt, b.EndAt, b.Notes, b.StaffID, time.Now(), id)
+	return mapBookingWriteError(err)
 }
 
 // --------------------
