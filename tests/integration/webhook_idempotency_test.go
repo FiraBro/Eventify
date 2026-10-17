@@ -306,8 +306,6 @@ func assertSuccessResponse(t *testing.T, response *httptest.ResponseRecorder) {
 	}
 }
 
-
-
 // TestWebhookInvalidSignatures executes Step 3.4 integration testing.
 // It proves that invalid, missing, or tampered signatures are rejected safely.
 func TestWebhookInvalidSignatures(t *testing.T) {

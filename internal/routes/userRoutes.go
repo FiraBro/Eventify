@@ -1,23 +1,32 @@
 package routes
 
 import (
+	"time"
+
+	"github.com/FiraBro/local-go/internal/config"
 	"github.com/FiraBro/local-go/internal/handlers"
 	"github.com/FiraBro/local-go/internal/middlewares"
 	"github.com/FiraBro/local-go/internal/repositories"
 	"github.com/gin-gonic/gin"
 )
 
-// AuthRoutes sets up authentication routes
 func AuthRoutes(api *gin.RouterGroup, authHandler *handlers.AuthHandler, userRepo *repositories.UserRepository) {
-	// Public auth endpoints
-	api.POST("/auth/register", authHandler.Register)
-	api.POST("/auth/login", authHandler.Login)
+	rdb := config.RedisClient
+
+	// Separate namespaces and windows to isolate registration abuse from standard credential requests
+	loginLimiter := middlewares.RateLimiter(rdb, "login", 5, 1*time.Minute)
+	registerLimiter := middlewares.RateLimiter(rdb, "register", 3, 1*time.Minute)
+	resetLimiter := middlewares.RateLimiter(rdb, "reset", 3, 1*time.Minute)
+
+	// Public auth endpoints protected with isolated rate limit profiles
+	api.POST("/auth/register", registerLimiter, authHandler.Register)
+	api.POST("/auth/login", loginLimiter, authHandler.Login)
 	api.POST("/auth/refresh", authHandler.Refresh)
 	api.POST("/auth/logout", authHandler.Logout)
-	api.POST("/auth/forgot-password", authHandler.ForgotPassword)
-	api.POST("/auth/reset-password", authHandler.ResetPassword)
+	api.POST("/auth/forgot-password", resetLimiter, authHandler.ForgotPassword)
+	api.POST("/auth/reset-password", resetLimiter, authHandler.ResetPassword)
 
-	// Authenticated routes
+	// Authenticated routes remain unthrottled here
 	authMW := middlewares.AuthMiddleware(userRepo)
 	api.GET("/auth/profile", authMW, authHandler.GetProfile)
 	api.PATCH("/auth/profile", authMW, authHandler.UpdateProfile)
