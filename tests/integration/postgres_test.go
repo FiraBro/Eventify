@@ -24,7 +24,7 @@ import (
 
 const (
 	postgresImage         = "postgres:16.3"
-	expectedSchemaVersion = 18
+	expectedSchemaVersion = 19
 )
 
 func newPostgresDatabase(t *testing.T) *sql.DB {

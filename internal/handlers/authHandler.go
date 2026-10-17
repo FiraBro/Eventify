@@ -152,13 +152,19 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	accessToken, err := h.authService.RefreshToken(body.RefreshToken)
+	// Invokes your secure single-use rotation routine logic
+	accessToken, newRefreshToken, err := h.authService.RefreshToken(body.RefreshToken)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "access_token": accessToken})
+	// Returns the fresh rotated payload blocks back cleanly to client engines
+	c.JSON(http.StatusOK, gin.H{
+		"success":       true,
+		"access_token":  accessToken,
+		"refresh_token": newRefreshToken,
+	})
 }
 
 // ----------------------------

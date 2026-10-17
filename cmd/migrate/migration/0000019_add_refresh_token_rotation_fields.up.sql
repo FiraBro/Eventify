@@ -1,0 +1,3 @@
+ALTER TABLE refresh_tokens
+    ADD COLUMN is_used BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN parent_tag TEXT NOT NULL DEFAULT '';

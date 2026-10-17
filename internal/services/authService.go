@@ -1,6 +1,8 @@
 package services
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"log"
 	"strconv"
@@ -32,6 +34,62 @@ func NewAuthService(
 		refreshRepo:    refreshRepo,
 		resetTokenRepo: resetTokenRepo,
 	}
+}
+
+func GenerateSecureToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func (s *AuthService) RefreshToken(token string) (string, string, error) {
+	// 1. Fetch the target token record atomically from its dedicated repository
+	rt, err := s.refreshRepo.Get(token)
+	if err != nil || rt == nil {
+		return "", "", errors.New("invalid refresh token")
+	}
+
+	// 2. Fraud Replay Detection: If the token was already spent, trigger session eviction
+	if rt.IsUsed {
+		_ = s.refreshRepo.DeleteAllForUser(rt.UserID)
+		return "", "", errors.New("security alert: refresh token reuse detected")
+	}
+
+	// 3. Expiration checks
+	if rt.ExpiresAt.Before(time.Now()) {
+		_ = s.refreshRepo.Delete(token)
+		return "", "", errors.New("refresh token expired")
+	}
+
+	// 4. Mark token as spent before creating replacements to prevent concurrent race conditions
+	rt.IsUsed = true
+	if err := s.refreshRepo.Update(rt); err != nil {
+		return "", "", errors.New("failed to consume token securely")
+	}
+
+	// 5. Mint a secure, replacement opaque refresh token
+	newRefreshTokenString := GenerateSecureToken()
+	newRt := &models.RefreshToken{
+		Token:     newRefreshTokenString,
+		UserID:    rt.UserID,
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour), // 7 days rolling validity
+		IsUsed:    false,
+		ParentTag: token,
+	}
+	if err := s.refreshRepo.Save(newRt); err != nil {
+		return "", "", errors.New("failed to issue replacement credentials")
+	}
+
+	// 6. Sign your standard short-lived Access JWT matching original constraints
+	newAccessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": rt.UserID,
+		"exp":     time.Now().Add(72 * time.Hour).Unix(),
+	}).SignedString([]byte(config.JWTSecret))
+	if err != nil {
+		return "", "", err
+	}
+
+	return newAccessToken, newRefreshTokenString, nil
 }
 
 // ----------------------------
@@ -113,31 +171,6 @@ func (s *AuthService) Login(email, password string) (string, string, *models.Use
 	}
 
 	return accessToken, refreshToken, user, nil
-}
-
-// ----------------------------
-// REFRESH TOKEN
-// ----------------------------
-func (s *AuthService) RefreshToken(token string) (string, error) {
-	rt, err := s.refreshRepo.Get(token)
-	if err != nil {
-		return "", errors.New("invalid refresh token")
-	}
-
-	if rt.ExpiresAt.Before(time.Now()) {
-		_ = s.refreshRepo.Delete(token)
-		return "", errors.New("refresh token expired")
-	}
-
-	newAccessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": rt.UserID,
-		"exp":     time.Now().Add(72 * time.Hour).Unix(),
-	}).SignedString([]byte(config.JWTSecret))
-	if err != nil {
-		return "", err
-	}
-
-	return newAccessToken, nil
 }
 
 // ----------------------------
