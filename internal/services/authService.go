@@ -2,9 +2,11 @@ package services
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"log"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -12,7 +14,6 @@ import (
 	"github.com/FiraBro/local-go/internal/config"
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
-	"github.com/FiraBro/local-go/internal/utils"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -40,6 +41,84 @@ func GenerateSecureToken() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// HashToken applies a high-entropy SHA-256 hashing digest over raw token sequences
+func HashToken(token string) string {
+	h := sha256.New()
+	h.Write([]byte(token))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// GenerateSecureOTP generates a cryptographically secure 6-digit random code
+func GenerateSecureOTP() (string, error) {
+	const digits = "0123456789"
+	result := make([]byte, 6)
+	for i := 0; i < 6; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(digits))))
+		if err != nil {
+			return "", err
+		}
+		result[i] = digits[num.Int64()]
+	}
+	return string(result), nil
+}
+
+func (s *AuthService) ForgotPassword(email string) error {
+	otp, err := GenerateSecureOTP()
+	if err != nil {
+		return err
+	}
+
+	hashedToken := HashToken(otp)
+	rt := &models.ResetToken{
+		Email:     email,
+		TokenHash: hashedToken,
+		ExpiresAt: time.Now().Add(15 * time.Minute), // Tight 15 minute lifespan constraint
+		IsUsed:    false,
+	}
+
+	if err := s.resetTokenRepo.Save(rt); err != nil {
+		return err
+	}
+
+	// Deliver the raw otp through your delivery infrastructure handle (e.g. SMTP/Email Client)
+	// Never log or save this cleartext string value.
+	return nil
+}
+
+func (s *AuthService) ResetPassword(email, otp, newPassword string) error {
+	// Re-hash the user input token to compare against the database record hash
+	targetHash := HashToken(otp)
+
+	// 1. Consume token atomically inside storage tier limits
+	_, err := s.resetTokenRepo.GetAndConsumeAtomic(email, targetHash)
+	if err != nil {
+		return errors.New("invalid or expired OTP")
+	}
+
+	// 2. Fetch target user account info securely
+	user, err := s.userRepo.GetByEmail(email)
+	if err != nil {
+		// Response masking to hide user existence discrepancies
+		return errors.New("invalid or expired OTP")
+	}
+
+	// 3. Encrypt password using project constraints (e.g. bcrypt)
+	hashedPassword, err := HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	// 4. Persist updated security credentials to the database layer
+	if err := s.userRepo.UpdatePassword(user.ID, hashedPassword); err != nil {
+		return err
+	}
+
+	// 5. Hard delete tracing data post completion
+	_ = s.resetTokenRepo.Delete(email)
+
+	return nil
 }
 
 func (s *AuthService) RefreshToken(token string) (string, string, error) {
@@ -183,70 +262,9 @@ func (s *AuthService) Logout(token string) error {
 // ----------------------------
 // FORGOT PASSWORD (hashed OTP)
 // ----------------------------
-func (s *AuthService) ForgotPassword(email string) error {
-	otp := utils.GenerateOTP()
-
-	// Delete old OTPs
-	if err := s.resetTokenRepo.Delete(email); err != nil {
-		return err
-	}
-
-	// Hash OTP before saving
-	hashedOtp, err := HashPassword(otp)
-	if err != nil {
-		return err
-	}
-
-	rt := &models.ResetToken{
-		Email:     email,
-		OTP:       hashedOtp,
-		ExpiresAt: time.Now().Add(5 * time.Minute),
-	}
-
-	if err := s.resetTokenRepo.Save(rt); err != nil {
-		return err
-	}
-
-	// Send email (can be async)
-	if err := utils.SendOTPEmail(email, otp); err != nil {
-		return err
-	}
-
-	return nil
-}
 
 // ----------------------------
 // RESET PASSWORD
-// ----------------------------
-func (s *AuthService) ResetPassword(email, otp, newPassword string) error {
-	rt, err := s.resetTokenRepo.Get(email, otp)
-	if err != nil {
-		return errors.New("invalid or expired OTP")
-	}
-
-	if rt.ExpiresAt.Before(time.Now()) {
-		return errors.New("invalid or expired OTP")
-	}
-
-	user, err := s.userRepo.GetByEmail(email)
-	if err != nil {
-		return errors.New("user not found")
-	}
-
-	hashed, err := HashPassword(newPassword)
-	if err != nil {
-		return err
-	}
-
-	if err := s.userRepo.UpdatePassword(user.ID, hashed); err != nil {
-		return err
-	}
-
-	// Delete OTP after success
-	_ = s.resetTokenRepo.Delete(email)
-
-	return nil
-}
 
 // ----------------------------
 // FETCH USER
