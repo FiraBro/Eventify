@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/FiraBro/local-go/internal/models"
@@ -20,6 +21,7 @@ var (
 	ErrStaffNotFound        = errors.New("staff member not found")
 	ErrStaffServiceMismatch = errors.New("staff member does not offer this service")
 	ErrBookingConflict      = errors.New("this time slot is no longer available for the selected staff member")
+	ErrNoStaffAvailable     = errors.New("no staff member is available at the requested time")
 )
 
 const roleAdmin = "admin"
@@ -93,8 +95,12 @@ func (s *BookingService) Create(ctx context.Context, userID string, booking *mod
 	booking.ScheduledAt = booking.ScheduledAt.UTC()
 	booking.EndAt = endAtFor(booking.ScheduledAt, svc.DurationMinutes)
 
-	// 4. Call Repo (the database rejects an overlapping slot for the same staff member)
-	return translateBookingWriteError(s.repo.Create(ctx, booking))
+	// 4. Call Repo. With an explicit staff member the database rejects an overlapping slot.
+	//    Without one, a free qualified staff member is assigned automatically.
+	if booking.StaffID != "" {
+		return translateBookingWriteError(s.repo.Create(ctx, booking))
+	}
+	return s.createWithAutoAssign(ctx, booking)
 }
 
 // Admin only (route middleware guards it, service re-checks)
@@ -244,4 +250,75 @@ func translateBookingWriteError(err error) error {
 		return ErrBookingConflict
 	}
 	return err
+}
+
+// createWithAutoAssign saves a booking that has no staff member yet.
+//
+// Candidates are the staff members who offer the service, are working at that time (their schedule,
+// read in the business timezone) and are not on holiday that day. They are tried least-busy first.
+// The database exclusion constraint is the final judge: if another request takes the same staff
+// member between our check and our insert, the insert fails and the next candidate is tried.
+// Two concurrent requests therefore can never end up with the same staff member and slot.
+func (s *BookingService) createWithAutoAssign(ctx context.Context, booking *models.Booking) error {
+	hasStaff, err := s.repo.ServiceHasStaff(ctx, booking.ServiceID)
+	if err != nil {
+		return err
+	}
+	if !hasStaff {
+		// Nobody is linked to this service, so there is nobody to assign. The booking stays
+		// unassigned (and therefore is not protected by the overlap constraint).
+		return translateBookingWriteError(s.repo.Create(ctx, booking))
+	}
+
+	tzName, err := s.repo.BusinessTimezone(ctx)
+	if err != nil {
+		return err
+	}
+	loc, err := time.LoadLocation(tzName)
+	if err != nil {
+		loc = time.UTC // settings validate the name; this is only a safety net
+	}
+
+	localStart := booking.ScheduledAt.In(loc)
+	localEnd := booking.EndAt.In(loc)
+	year, month, day := localStart.Date()
+	dayStart := time.Date(year, month, day, 0, 0, 0, 0, loc)
+
+	candidates, err := s.repo.StaffCandidates(ctx, booking.ServiceID, dayStart, dayStart.AddDate(0, 0, 1))
+	if err != nil {
+		return err
+	}
+	ids := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		ids = append(ids, c.ID)
+	}
+
+	holidays, err := s.repo.StaffOnHoliday(ctx, ids, localStart.Format("2006-01-02"))
+	if err != nil {
+		return err
+	}
+	shifts, err := s.repo.StaffShifts(ctx, ids)
+	if err != nil {
+		return err
+	}
+
+	eligible := filterEligible(candidates, holidays, shifts, localStart, localEnd)
+	for _, staffID := range eligible.IDs {
+		booking.StaffID = staffID
+		err := s.repo.Create(ctx, booking)
+		if errors.Is(err, repositories.ErrSlotConflict) {
+			continue // taken by someone else a moment ago: try the next one
+		}
+		return err // nil on success
+	}
+
+	booking.StaffID = ""
+	slog.InfoContext(ctx, "no staff available for booking request",
+		"service_id", booking.ServiceID,
+		"candidates", len(candidates),
+		"on_holiday", eligible.OnHoliday,
+		"outside_shift", eligible.OutsideShift,
+		"already_booked", len(eligible.IDs),
+	)
+	return ErrNoStaffAvailable
 }

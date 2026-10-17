@@ -30,7 +30,7 @@ func bookingError(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": err.Error()})
 	case errors.Is(err, services.ErrBookingForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": err.Error()})
-	case errors.Is(err, services.ErrBookingConflict):
+	case errors.Is(err, services.ErrBookingConflict), errors.Is(err, services.ErrNoStaffAvailable):
 		c.JSON(http.StatusConflict, gin.H{"success": false, "message": err.Error()})
 	case errors.Is(err, services.ErrBookingNotEditable),
 		errors.Is(err, services.ErrInvalidTransition),
@@ -38,8 +38,7 @@ func bookingError(c *gin.Context, err error) {
 		errors.Is(err, services.ErrStaffServiceMismatch):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"success": false, "message": err.Error()})
 	default:
-		// Replaced with Go's native contextual structured logging engine
-		slog.Default().ErrorContext(c.Request.Context(), "booking request failed", "error", err)
+		slog.ErrorContext(c.Request.Context(), "booking request failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Something went wrong"})
 	}
 }
@@ -48,31 +47,25 @@ func bookingError(c *gin.Context, err error) {
 func (h *BookingHandler) Create(c *gin.Context) {
 	userID, _ := currentUser(c)
 
-	var req models.CreateBookingRequest
+	// 2. Hardcode the dummy UUID you added to your database:
+	// userID := "11111111-1111-1111-1111-111111111111"
+
+	var req models.Booking
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid input data",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid input data"})
 		return
 	}
 
-	booking := models.Booking{
-		ServiceID:   req.ServiceID,
-		StaffID:     req.StaffID,
-		ScheduledAt: req.ScheduledAt,
-		Notes:       req.Notes,
-	}
-
-	if err := h.service.Create(c.Request.Context(), userID, &booking); err != nil {
+	// ID, UserID, Status and timestamps are set in the Service/Repository layer
+	if err := h.service.Create(c.Request.Context(), userID, &req); err != nil {
 		bookingError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": booking})
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": req})
 }
 
-// GET /bookings (admin)
+// GET /bookings  (admin)
 func (h *BookingHandler) GetAll(c *gin.Context) {
 	_, role := currentUser(c)
 

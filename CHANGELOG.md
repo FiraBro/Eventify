@@ -10,6 +10,10 @@
   a value sent by a client is ignored. A booked slot is the half-open range `[scheduled_at, end_at)`.
 - `409 Conflict` from `POST /bookings` and `PATCH /bookings/:id` when the chosen staff member already has an
   active (pending or confirmed) booking that overlaps the slot.
+- `POST /bookings` without `staff_id` now assigns a free, qualified staff member automatically (offers the
+  service, works that weekday and time in the business timezone, not on holiday, no overlapping booking;
+  least busy that day first). The response contains the assigned `staff_id`. `409 Conflict` when nobody is
+  available. A service that no staff member is linked to still creates an unassigned booking.
 
 ### Changed
 
@@ -25,5 +29,6 @@
 
 ### Not covered yet
 
-- Bookings without a staff member are not protected by the overlap constraint (auto-assignment follows).
+- Bookings for a service that no staff member is linked to stay unassigned and are not overlap-protected.
+- An explicit `staff_id` is checked for overlap only, not against that person's schedule or holidays (planned for the validation step).
 - OpenAPI (`docs/`) is not regenerated yet.

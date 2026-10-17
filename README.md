@@ -101,19 +101,19 @@ Booking conflict prevention, transactional reservation handling, cancellation po
 
 ## Technology Stack
 
-| Component | Technology | Responsibility |
-|---|---|---|
-| Backend language | Go 1.22+ | Application logic |
-| HTTP framework | Gin | Routing and HTTP middleware |
-| Database | PostgreSQL 16 | Persistent application data |
-| Database driver | `lib/pq` or `pgx`, depending on implementation | PostgreSQL connectivity |
-| Migrations | golang-migrate | Versioned schema changes |
-| Authentication | JWT | API authentication |
-| Frontend | Next.js, React, TypeScript | Customer, staff, and admin interfaces |
-| Validation | Go validation and frontend schemas | Request validation |
-| Containerization | Docker, Docker Compose | Local development and deployment |
-| CI/CD | GitHub Actions | Automated checks and delivery workflows |
-| Configuration | Environment variables | Runtime configuration |
+| Component        | Technology                                     | Responsibility                          |
+| ---------------- | ---------------------------------------------- | --------------------------------------- |
+| Backend language | Go 1.22+                                       | Application logic                       |
+| HTTP framework   | Gin                                            | Routing and HTTP middleware             |
+| Database         | PostgreSQL 16                                  | Persistent application data             |
+| Database driver  | `lib/pq` or `pgx`, depending on implementation | PostgreSQL connectivity                 |
+| Migrations       | golang-migrate                                 | Versioned schema changes                |
+| Authentication   | JWT                                            | API authentication                      |
+| Frontend         | Next.js, React, TypeScript                     | Customer, staff, and admin interfaces   |
+| Validation       | Go validation and frontend schemas             | Request validation                      |
+| Containerization | Docker, Docker Compose                         | Local development and deployment        |
+| CI/CD            | GitHub Actions                                 | Automated checks and delivery workflows |
+| Configuration    | Environment variables                          | Runtime configuration                   |
 
 Use the PostgreSQL driver actually declared in `go.mod`; the table above describes the intended stack rather than asserting which driver is currently installed.
 
@@ -224,20 +224,20 @@ PostgreSQL
 
 Directory responsibilities:
 
-| Directory | Responsibility |
-|---|---|
-| `cmd/server/` | Application entry point |
-| `cmd/migrate/migration/` | Versioned database migrations |
-| `internal/config/` | Application configuration |
-| `internal/db/` | Database initialization and connection management |
-| `internal/handlers/` | HTTP request handlers |
-| `internal/middlewares/` | Authentication and authorization middleware |
-| `internal/models/` | Data and domain models |
-| `internal/repositories/` | Database access |
-| `internal/routes/` | API route registration |
-| `internal/services/` | Business logic |
-| `tests/` | Automated tests |
-| `docs/` | API and development documentation |
+| Directory                | Responsibility                                    |
+| ------------------------ | ------------------------------------------------- |
+| `cmd/server/`            | Application entry point                           |
+| `cmd/migrate/migration/` | Versioned database migrations                     |
+| `internal/config/`       | Application configuration                         |
+| `internal/db/`           | Database initialization and connection management |
+| `internal/handlers/`     | HTTP request handlers                             |
+| `internal/middlewares/`  | Authentication and authorization middleware       |
+| `internal/models/`       | Data and domain models                            |
+| `internal/repositories/` | Database access                                   |
+| `internal/routes/`       | API route registration                            |
+| `internal/services/`     | Business logic                                    |
+| `tests/`                 | Automated tests                                   |
+| `docs/`                  | API and development documentation                 |
 
 ### Next.js Frontend
 
@@ -303,10 +303,10 @@ Public endpoints, such as registration and login, do not require authentication.
 
 ### Roles
 
-| Role | Intended access |
-|---|---|
-| `user` | Customer account and own bookings |
-| `staff` | Assigned staff operations and bookings |
+| Role    | Intended access                                             |
+| ------- | ----------------------------------------------------------- |
+| `user`  | Customer account and own bookings                           |
+| `staff` | Assigned staff operations and bookings                      |
 | `admin` | Administrative user, service, staff, and booking management |
 
 Role names and permissions must remain consistent between database records, token claims, backend middleware, and frontend authorization logic.
@@ -325,63 +325,63 @@ http://localhost:8080/api/v1
 
 ### Authentication
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/auth/register` | Register an account |
-| POST | `/auth/login` | Authenticate a user |
-| POST | `/auth/refresh` | Refresh an access token |
-| POST | `/auth/logout` | Log out and revoke the refresh session |
-| POST | `/auth/forgot-password` | Start password recovery |
-| POST | `/auth/reset-password` | Complete password recovery |
-| GET | `/auth/profile` | Retrieve the authenticated profile |
-| PATCH | `/auth/profile` | Update the authenticated profile |
-| PATCH | `/auth/change-password` | Change the account password |
+| Method | Endpoint                | Description                            |
+| ------ | ----------------------- | -------------------------------------- |
+| POST   | `/auth/register`        | Register an account                    |
+| POST   | `/auth/login`           | Authenticate a user                    |
+| POST   | `/auth/refresh`         | Refresh an access token                |
+| POST   | `/auth/logout`          | Log out and revoke the refresh session |
+| POST   | `/auth/forgot-password` | Start password recovery                |
+| POST   | `/auth/reset-password`  | Complete password recovery             |
+| GET    | `/auth/profile`         | Retrieve the authenticated profile     |
+| PATCH  | `/auth/profile`         | Update the authenticated profile       |
+| PATCH  | `/auth/change-password` | Change the account password            |
 
 ### Users
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/users` | List users, with pagination where implemented |
-| POST | `/users` | Create a user, subject to authorization |
-| GET | `/users/:id` | Retrieve a user |
-| PATCH | `/users/:id` | Update a user |
-| PATCH | `/users/:id/role` | Update a user's role |
-| DELETE | `/users/:id` | Delete or deactivate a user according to the account lifecycle policy |
+| Method | Endpoint          | Description                                                           |
+| ------ | ----------------- | --------------------------------------------------------------------- |
+| GET    | `/users`          | List users, with pagination where implemented                         |
+| POST   | `/users`          | Create a user, subject to authorization                               |
+| GET    | `/users/:id`      | Retrieve a user                                                       |
+| PATCH  | `/users/:id`      | Update a user                                                         |
+| PATCH  | `/users/:id/role` | Update a user's role                                                  |
+| DELETE | `/users/:id`      | Delete or deactivate a user according to the account lifecycle policy |
 
 ### Services
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/services` | List services |
-| GET | `/services/:id` | Retrieve a service |
-| GET | `/services/categories` | Retrieve service categories |
-| POST | `/services` | Create a service |
-| PATCH | `/services/:id` | Update a service |
-| DELETE | `/services/:id` | Delete or deactivate a service |
+| Method | Endpoint               | Description                    |
+| ------ | ---------------------- | ------------------------------ |
+| GET    | `/services`            | List services                  |
+| GET    | `/services/:id`        | Retrieve a service             |
+| GET    | `/services/categories` | Retrieve service categories    |
+| POST   | `/services`            | Create a service               |
+| PATCH  | `/services/:id`        | Update a service               |
+| DELETE | `/services/:id`        | Delete or deactivate a service |
 
 Service-management operations require administrative authorization.
 
 ### Staff
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/staff` | List staff |
-| POST | `/staff` | Create a staff record |
-| GET | `/staff/:id` | Retrieve staff details |
-| PATCH | `/staff/:id` | Update a staff record |
-| DELETE | `/staff/:id` | Remove or deactivate a staff record |
-| GET | `/staff/:id/services` | Retrieve assigned services |
-| POST | `/staff/:id/services` | Assign services |
-| GET | `/staff/:id/schedule` | Retrieve working hours |
-| POST | `/staff/:id/schedule` | Configure working hours |
-| POST | `/staff/:id/holidays` | Record a holiday or unavailable period |
+| Method | Endpoint              | Description                            |
+| ------ | --------------------- | -------------------------------------- |
+| GET    | `/staff`              | List staff                             |
+| POST   | `/staff`              | Create a staff record                  |
+| GET    | `/staff/:id`          | Retrieve staff details                 |
+| PATCH  | `/staff/:id`          | Update a staff record                  |
+| DELETE | `/staff/:id`          | Remove or deactivate a staff record    |
+| GET    | `/staff/:id/services` | Retrieve assigned services             |
+| POST   | `/staff/:id/services` | Assign services                        |
+| GET    | `/staff/:id/schedule` | Retrieve working hours                 |
+| POST   | `/staff/:id/schedule` | Configure working hours                |
+| POST   | `/staff/:id/holidays` | Record a holiday or unavailable period |
 
 ### Availability
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/availability/services/:serviceId` | Find available slots for a service |
-| GET | `/availability/staff/:staffId` | Find available slots for staff |
+| Method | Endpoint                            | Description                        |
+| ------ | ----------------------------------- | ---------------------------------- |
+| GET    | `/availability/services/:serviceId` | Find available slots for a service |
+| GET    | `/availability/staff/:staffId`      | Find available slots for staff     |
 
 Availability requests should account for working schedules, holidays, service duration, buffers, existing bookings, and the requested date range.
 
@@ -720,4 +720,3 @@ This project is licensed under the MIT License, provided that the repository inc
 ---
 
 **Maintainer:**FiraBro.
-
