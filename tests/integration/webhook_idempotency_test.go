@@ -305,3 +305,83 @@ func assertSuccessResponse(t *testing.T, response *httptest.ResponseRecorder) {
 		t.Fatalf("webhook response success = false, want true")
 	}
 }
+
+
+
+// TestWebhookInvalidSignatures executes Step 3.4 integration testing.
+// It proves that invalid, missing, or tampered signatures are rejected safely.
+func TestWebhookInvalidSignatures(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Test A: Incorrect signature", func(t *testing.T) {
+		fixture := newWebhookFixture(t, nil, nil)
+
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/payments/webhook", bytes.NewReader(fixture.webhookBody))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Chapa-Signature", "definitively_incorrect_signature_hash")
+
+		response := httptest.NewRecorder()
+		fixture.router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusUnauthorized {
+			t.Errorf("expected status 401 Unauthorized, got %d", response.Code)
+		}
+
+		payment, err := repositories.NewPaymentRepository(fixture.db).GetByTxRef(ctx, fixture.txRef)
+		if err != nil {
+			t.Fatalf("failed to query database for payment state: %v", err)
+		}
+		if payment.Status != "pending" {
+			t.Errorf("security breach: payment status mutated to %q on bad signature", payment.Status)
+		}
+
+		booking, err := repositories.NewBookingRepository(fixture.db).GetByID(ctx, fixture.bookingID)
+		if err != nil {
+			t.Fatalf("failed to query database for booking state: %v", err)
+		}
+		if booking.Status != "pending" {
+			t.Errorf("security breach: booking status mutated to %q on bad signature", booking.Status)
+		}
+	})
+
+	t.Run("Test B: Missing signature", func(t *testing.T) {
+		fixture := newWebhookFixture(t, nil, nil)
+
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/payments/webhook", bytes.NewReader(fixture.webhookBody))
+		request.Header.Set("Content-Type", "application/json")
+
+		response := httptest.NewRecorder()
+		fixture.router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusUnauthorized {
+			t.Errorf("expected status 401 Unauthorized for missing signature, got %d", response.Code)
+		}
+
+		payment, _ := repositories.NewPaymentRepository(fixture.db).GetByTxRef(ctx, fixture.txRef)
+		if payment.Status != "pending" {
+			t.Errorf("security breach: payment status mutated with missing signature header")
+		}
+	})
+
+	t.Run("Test C: Tampered payload", func(t *testing.T) {
+		fixture := newWebhookFixture(t, nil, nil)
+
+		tamperedBody := []byte(`{"tx_ref":"tampered-tx-reference-id"}`)
+
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/payments/webhook", bytes.NewReader(tamperedBody))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Chapa-Signature", fixture.signature)
+
+		response := httptest.NewRecorder()
+		fixture.router.ServeHTTP(response, request)
+
+		if response.Code != http.StatusUnauthorized {
+			t.Errorf("expected status 401 Unauthorized for tampered payload, got %d", response.Code)
+		}
+
+		payment, _ := repositories.NewPaymentRepository(fixture.db).GetByTxRef(ctx, fixture.txRef)
+		if payment.Status != "pending" {
+			t.Errorf("security breach: payment status mutated on tampered payload")
+		}
+	})
+}
