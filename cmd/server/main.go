@@ -22,6 +22,7 @@ import (
 	"github.com/FiraBro/local-go/internal/db"
 	"github.com/FiraBro/local-go/internal/gateways"
 	"github.com/FiraBro/local-go/internal/handlers"
+	"github.com/FiraBro/local-go/internal/middlewares"
 	"github.com/FiraBro/local-go/internal/repositories"
 	"github.com/FiraBro/local-go/internal/routes"
 	"github.com/FiraBro/local-go/internal/services"
@@ -57,9 +58,7 @@ func main() {
 	settingsRepo := repositories.NewSettingsRepository(dbConn)
 	logRepo := repositories.NewLogRepository(dbConn)
 
-	// ------------------------
 	// 4. Gateways
-	// ------------------------
 	chapaGateway := gateways.NewChapaGateway(
 		os.Getenv("CHAPA_SECRET_KEY"),
 		os.Getenv("CHAPA_WEBHOOK_SECRET"),
@@ -72,17 +71,14 @@ func main() {
 	serviceService := services.NewServiceService(serviceRepo)
 	bookingService := services.NewBookingService(bookingRepo, serviceRepo)
 
-	// PaymentService reads bookings + service prices and talks to the payment gateway
 	paymentService := services.NewPaymentService(paymentRepo, bookingRepo, serviceRepo, chapaGateway, services.PaymentConfig{
-		CallbackURL: os.Getenv("CHAPA_CALLBACK_URL"), // public URL of POST /payments/webhook
+		CallbackURL: os.Getenv("CHAPA_CALLBACK_URL"),
 		ReturnURL:   os.Getenv("CHAPA_RETURN_URL"),
 		Currency:    "ETB",
 	})
 
 	notificationService := services.NewNotificationService(notificationRepo)
 	reportService := services.NewReportService(reportRepo)
-
-	// SettingsService: business-wide configuration. LogService: activity log written by the middleware below
 	settingsService := services.NewSettingsService(settingsRepo)
 	logService := services.NewLogService(logRepo)
 
@@ -97,7 +93,7 @@ func main() {
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 	logHandler := handlers.NewLogHandler(logService)
 
-	// 7. Router
+	// 7. Router Setup
 	if os.Getenv("GIN_MODE") == "" && os.Getenv("APP_ENV") == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -108,8 +104,12 @@ func main() {
 		log.Fatalf("❌ Failed to set trusted proxies: %v", err)
 	}
 
-	// r.Use(middlewares.CORS())
+	// 🚀 Core HTTP Hardening Middleware registration (Step 4.4)
+	r.Use(middlewares.SecurityHeaders())
+	r.Use(middlewares.ExplicitCORS())
+	r.Use(middlewares.RequestBodyLimiter())
 
+	// 7b. Group Registration & Endpoint Bindings
 	api := r.Group(apiBasePath)
 	routes.AuthRoutes(api, authHandler, userRepo)
 	routes.UserRoutes(api, authHandler, userRepo)
@@ -127,7 +127,7 @@ func main() {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	}
 
-	// 8. HTTP server with timeouts
+	// 8. HTTP server configuration with production-grade timeouts
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -140,6 +140,7 @@ func main() {
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB Maximum Header constraint block
 	}
 
 	go func() {
@@ -150,7 +151,7 @@ func main() {
 		}
 	}()
 
-	// 8. Graceful shutdown
+	// 9. Graceful shutdown pipeline
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
