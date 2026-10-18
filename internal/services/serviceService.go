@@ -2,11 +2,16 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 
+	"github.com/FiraBro/local-go/internal/cacheaside"
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
+	"golang.org/x/sync/singleflight"
 )
 
 var (
@@ -29,8 +34,22 @@ func checkDuration(minutes int) error {
 	return nil
 }
 
+// ============================================================================
+// SERVICE SERVICE
+// ============================================================================
+
 type ServiceService struct {
-	repo *repositories.ServiceRepository
+	repo       *repositories.ServiceRepository
+	cache      cacheaside.Store
+	cacheGroup singleflight.Group
+}
+
+// SetReadCache enables best-effort caching for the services-list read path.
+func (s *ServiceService) SetReadCache(store cacheaside.Store) { s.cache = store }
+
+func servicesListCacheKey() string {
+	sum := sha256.Sum256([]byte("all-services-v1"))
+	return "local-go:services:list:v1:" + hex.EncodeToString(sum[:])
 }
 
 func NewServiceService(repo *repositories.ServiceRepository) *ServiceService {
@@ -54,7 +73,7 @@ func (s *ServiceService) Create(ctx context.Context, service *models.Service) er
 }
 
 func (s *ServiceService) GetAll(ctx context.Context) ([]models.Service, error) {
-	return s.repo.GetAll(ctx)
+	return cacheaside.Load(ctx, s.cache, &s.cacheGroup, servicesListCacheKey(), cacheaside.ServicesTTL, s.repo.GetAll)
 }
 
 func (s *ServiceService) GetByID(ctx context.Context, id string) (*models.Service, error) {
@@ -112,4 +131,41 @@ func (s *ServiceService) Delete(ctx context.Context, id string) error {
 
 func (s *ServiceService) GetCategories(ctx context.Context) ([]string, error) {
 	return s.repo.GetCategories(ctx)
+}
+
+// SetReadCache enables short-lived caching for service availability only.
+func (s *AvailabilityService) SetReadCache(store cacheaside.Store) {
+	s.cache = store
+}
+
+// availabilityCacheKey creates a cryptographically secure hash representing specific service lookup contexts.
+func availabilityCacheKey(serviceID, date string) string {
+	sum := sha256.Sum256([]byte("service=" + serviceID + "\x00date=" + date))
+	return "local-go:availability:service:v1:" + hex.EncodeToString(sum[:])
+}
+
+// GetServiceSlots checks cache layers before executing the heavy query resolver function.
+func (s *AvailabilityService) GetServiceSlots(ctx context.Context, serviceID, date string) ([]string, error) {
+	return cacheaside.Load(ctx, s.cache, &s.cacheGroup, availabilityCacheKey(serviceID, date), cacheaside.AvailabilityTTL, func(loadCtx context.Context) ([]string, error) {
+		staffList, err := s.repo.GetStaffByService(loadCtx, serviceID)
+		if err != nil {
+			return nil, err
+		}
+		unique := make(map[string]struct{})
+		for _, staff := range staffList {
+			slots, slotErr := s.GetStaffSlots(loadCtx, staff.ID, date)
+			if slotErr != nil {
+				continue
+			} // preserve existing partial-result semantics
+			for _, slot := range slots {
+				unique[slot] = struct{}{}
+			}
+		}
+		result := make([]string, 0, len(unique))
+		for slot := range unique {
+			result = append(result, slot)
+		}
+		sort.Strings(result)
+		return result, nil
+	})
 }

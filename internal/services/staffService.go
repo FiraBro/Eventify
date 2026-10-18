@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/FiraBro/local-go/internal/cacheaside"
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
+	"golang.org/x/sync/singleflight"
 )
 
 type StaffService struct {
@@ -135,7 +137,9 @@ func (s *StaffService) AddHoliday(ctx context.Context, id, date, reason string) 
 // ---------- AVAILABILITY SERVICE ----------
 
 type AvailabilityService struct {
-	repo *repositories.StaffRepository
+	repo       *repositories.StaffRepository
+	cache      cacheaside.Store
+	cacheGroup singleflight.Group
 }
 
 func NewAvailabilityService(repo *repositories.StaffRepository) *AvailabilityService {

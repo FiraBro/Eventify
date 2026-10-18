@@ -2,13 +2,19 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+
 	"fmt"
 	"net/mail"
 	"regexp"
 	"strings"
 	"time"
 	_ "time/tzdata" // embed the timezone database so validation works in minimal Docker images
+
+	"github.com/FiraBro/local-go/internal/cacheaside"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
@@ -30,7 +36,17 @@ func settingsInvalid(msg string) error {
 }
 
 type SettingsService struct {
-	repo *repositories.SettingsRepository
+	repo       *repositories.SettingsRepository
+	cache      cacheaside.Store
+	cacheGroup singleflight.Group
+}
+
+// SetReadCache enables best-effort caching for the shared settings read path.
+func (s *SettingsService) SetReadCache(store cacheaside.Store) { s.cache = store }
+
+func settingsCacheKey() string {
+	sum := sha256.Sum256([]byte("business-settings-row-1-v1"))
+	return "local-go:settings:singleton:v1:" + hex.EncodeToString(sum[:])
 }
 
 func NewSettingsService(repo *repositories.SettingsRepository) *SettingsService {
@@ -38,6 +54,11 @@ func NewSettingsService(repo *repositories.SettingsRepository) *SettingsService 
 }
 
 func (s *SettingsService) Get(ctx context.Context) (*models.Settings, error) {
+	settings, err := cacheaside.Load(ctx, s.cache, &s.cacheGroup, settingsCacheKey(), cacheaside.SettingsTTL, s.repo.Get)
+	if err != nil || settings != nil {
+		return settings, err
+	}
+	// A JSON `null` entry is structurally valid but not a valid settings record.
 	return s.repo.Get(ctx)
 }
 
