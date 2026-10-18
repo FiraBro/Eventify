@@ -20,7 +20,7 @@ func NewStaffRepository(db *sql.DB) *StaffRepository {
 // ------------------- STAFF CRUD -------------------
 
 func (r *StaffRepository) GetAll(ctx context.Context) ([]models.Staff, error) {
-	query := `SELECT id, name, email, phone, role FROM staff ORDER BY name ASC`
+	query := `SELECT id, name, email, phone FROM staff ORDER BY name ASC`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func (r *StaffRepository) GetAll(ctx context.Context) ([]models.Staff, error) {
 	var staffList []models.Staff
 	for rows.Next() {
 		var s models.Staff
-		if err := rows.Scan(&s.ID, &s.Name, &s.Email, &s.Phone, &s.Role); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Email, &s.Phone); err != nil {
 			return nil, err
 		}
 		staffList = append(staffList, s)
@@ -44,17 +44,19 @@ func (r *StaffRepository) Create(ctx context.Context, staff *models.Staff) error
 	}
 
 	query := `
-        INSERT INTO staff (id, name, email, phone, role)
-        VALUES ($1, $2, $3, $4, $5)
-    `
-	_, err := r.db.ExecContext(ctx, query, staff.ID, staff.Name, staff.Email, staff.Phone, staff.Role)
+    INSERT INTO staff (id, name, email, phone)
+    VALUES ($1, $2, $3, $4)
+`
+	_, err := r.db.ExecContext(ctx, query, staff.ID, staff.Name, staff.Email, staff.Phone)
 	return err
 }
 
 func (r *StaffRepository) GetByID(ctx context.Context, id string) (*models.Staff, error) {
-	query := `SELECT id, name, email, phone, role FROM staff WHERE id = $1`
+	query := `SELECT id, name, email, phone FROM staff WHERE id = $1`
 	var s models.Staff
-	err := r.db.QueryRowContext(ctx, query, id).Scan(&s.ID, &s.Name, &s.Email, &s.Phone, &s.Role)
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&s.ID, &s.Name, &s.Email, &s.Phone,
+	)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -66,8 +68,8 @@ func (r *StaffRepository) GetByID(ctx context.Context, id string) (*models.Staff
 }
 
 func (r *StaffRepository) Update(ctx context.Context, id string, staff *models.Staff) error {
-	query := `UPDATE staff SET name = $1, email = $2, phone = $3, role = $4 WHERE id = $5`
-	_, err := r.db.ExecContext(ctx, query, staff.Name, staff.Email, staff.Phone, staff.Role, id)
+	query := `UPDATE staff SET name = $1, email = $2, phone = $3 WHERE id = $4`
+	_, err := r.db.ExecContext(ctx, query, staff.Name, staff.Email, staff.Phone, id)
 	return err
 }
 
@@ -98,11 +100,11 @@ func (r *StaffRepository) GetServiceIDs(ctx context.Context, staffID string) ([]
 }
 func (r *StaffRepository) GetStaffByService(ctx context.Context, serviceID string) ([]models.Staff, error) {
 	query := `
-        SELECT s.id, s.name, s.email, s.phone, s.role
-        FROM staff s
-        JOIN staff_services ss ON s.id = ss.staff_id
-        WHERE ss.service_id = $1
-    `
+    SELECT s.id, s.name, s.email, s.phone
+    FROM staff s
+    JOIN staff_services ss ON s.id = ss.staff_id
+    WHERE ss.service_id = $1
+`
 
 	rows, err := r.db.QueryContext(ctx, query, serviceID)
 	if err != nil {
@@ -113,7 +115,7 @@ func (r *StaffRepository) GetStaffByService(ctx context.Context, serviceID strin
 	var staffList []models.Staff
 	for rows.Next() {
 		var s models.Staff
-		if err := rows.Scan(&s.ID, &s.Name, &s.Email, &s.Phone, &s.Role); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Email, &s.Phone); err != nil {
 			return nil, err
 		}
 		staffList = append(staffList, s)
