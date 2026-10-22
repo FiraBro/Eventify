@@ -46,7 +46,7 @@ func (s *SettingsService) SetReadCache(store cacheaside.Store) { s.cache = store
 
 func settingsCacheKey() string {
 	sum := sha256.Sum256([]byte("business-settings-row-1-v1"))
-	return "local-go:settings:singleton:v1:" + hex.EncodeToString(sum[:])
+	return settingsCacheNamespace + ":" + hex.EncodeToString(sum[:])
 }
 
 func NewSettingsService(repo *repositories.SettingsRepository) *SettingsService {
@@ -54,7 +54,7 @@ func NewSettingsService(repo *repositories.SettingsRepository) *SettingsService 
 }
 
 func (s *SettingsService) Get(ctx context.Context) (*models.Settings, error) {
-	settings, err := cacheaside.Load(ctx, s.cache, &s.cacheGroup, settingsCacheKey(), cacheaside.SettingsTTL, s.repo.Get)
+	settings, err := cacheaside.LoadVersioned(ctx, s.cache, &s.cacheGroup, settingsCacheNamespace, strings.TrimPrefix(settingsCacheKey(), settingsCacheNamespace+":"), cacheaside.SettingsTTL, s.repo.Get)
 	if err != nil || settings != nil {
 		return settings, err
 	}
@@ -174,8 +174,18 @@ func (s *SettingsService) Update(ctx context.Context, userID, role string, req *
 	}
 	updated.UpdatedBy = userID
 	updated.UpdatedAt = time.Now()
-	if err := s.repo.Update(ctx, &updated); err != nil {
+	type updateResult struct {
+		settings *models.Settings
+		changes  models.SettingsChanges
+	}
+	result, err := cacheaside.Mutate(ctx, s.cache, []string{settingsCacheNamespace}, func(ctx context.Context) (updateResult, error) {
+		if err := s.repo.Update(ctx, &updated); err != nil {
+			return updateResult{}, err
+		}
+		return updateResult{settings: &updated, changes: changes}, nil
+	})
+	if err != nil {
 		return nil, nil, err
 	}
-	return &updated, changes, nil
+	return result.settings, result.changes, nil
 }

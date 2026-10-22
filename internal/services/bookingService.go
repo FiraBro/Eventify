@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/FiraBro/local-go/internal/cacheaside"
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
 	"github.com/google/uuid"
@@ -58,13 +59,23 @@ func canTransition(from, to string) bool {
 type BookingService struct {
 	repo        *repositories.BookingRepository
 	serviceRepo *repositories.ServiceRepository
+	cache       cacheaside.Store
 }
 
 func NewBookingService(repo *repositories.BookingRepository, serviceRepo *repositories.ServiceRepository) *BookingService {
 	return &BookingService{repo: repo, serviceRepo: serviceRepo}
 }
 
+// SetReadCache enables best-effort invalidation for availability-affecting writes.
+func (s *BookingService) SetReadCache(store cacheaside.Store) { s.cache = store }
+
 func (s *BookingService) Create(ctx context.Context, userID string, booking *models.Booking) error {
+	return mutateAndInvalidate(ctx, s.cache, []string{availabilityCacheNamespace}, func(ctx context.Context) error {
+		return s.create(ctx, userID, booking)
+	})
+}
+
+func (s *BookingService) create(ctx context.Context, userID string, booking *models.Booking) error {
 	// 1. Business Validation
 	if booking.ServiceID == "" {
 		return fmt.Errorf("%w: service_id is required", ErrBookingInvalidInput)
@@ -136,6 +147,11 @@ func (s *BookingService) Update(ctx context.Context, id, userID, role string, re
 		return nil, err
 	}
 
+	// Keep the original slot fields to avoid invalidating on notes-only edits.
+	originalStaffID := existing.StaffID
+	originalScheduledAt := existing.ScheduledAt
+	originalEndAt := existing.EndAt
+
 	// 2. Editing rules
 	if role != roleAdmin && existing.Status != bookingPending {
 		return nil, ErrBookingNotEditable
@@ -168,11 +184,19 @@ func (s *BookingService) Update(ctx context.Context, id, userID, role string, re
 		existing.Notes = *req.Notes
 	}
 
-	// 4. Save (an overlap with the same staff member's other bookings is rejected by the database)
-	if err := translateBookingWriteError(s.repo.Update(ctx, id, existing)); err != nil {
-		return nil, err
+	// 4. Save (an overlap with the same staff member's other bookings is rejected by the database).
+	availabilityChanged := originalStaffID != existing.StaffID ||
+		!originalScheduledAt.Equal(existing.ScheduledAt) || !originalEndAt.Equal(existing.EndAt)
+	namespaces := []string(nil)
+	if availabilityChanged {
+		namespaces = []string{availabilityCacheNamespace}
 	}
-	return existing, nil
+	return cacheaside.Mutate(ctx, s.cache, namespaces, func(ctx context.Context) (*models.Booking, error) {
+		if err := translateBookingWriteError(s.repo.Update(ctx, id, existing)); err != nil {
+			return nil, err
+		}
+		return existing, nil
+	})
 }
 
 func (s *BookingService) Delete(ctx context.Context, id, userID, role string) error {
@@ -183,7 +207,9 @@ func (s *BookingService) Delete(ctx context.Context, id, userID, role string) er
 	if role != roleAdmin && existing.Status != bookingPending {
 		return ErrBookingNotEditable
 	}
-	return s.repo.Delete(ctx, id)
+	return mutateAndInvalidate(ctx, s.cache, []string{availabilityCacheNamespace}, func(ctx context.Context) error {
+		return s.repo.Delete(ctx, id)
+	})
 }
 
 func (s *BookingService) UpdateStatus(ctx context.Context, id, userID, role, newStatus string) (*models.Booking, error) {
@@ -204,12 +230,14 @@ func (s *BookingService) UpdateStatus(ctx context.Context, id, userID, role, new
 		return nil, ErrInvalidTransition
 	}
 
-	if err := s.repo.UpdateStatus(ctx, id, newStatus); err != nil {
-		return nil, err
-	}
-	existing.Status = newStatus
-	existing.UpdatedAt = time.Now()
-	return existing, nil
+	return cacheaside.Mutate(ctx, s.cache, []string{availabilityCacheNamespace}, func(ctx context.Context) (*models.Booking, error) {
+		if err := s.repo.UpdateStatus(ctx, id, newStatus); err != nil {
+			return nil, err
+		}
+		existing.Status = newStatus
+		existing.UpdatedAt = time.Now()
+		return existing, nil
+	})
 }
 
 // checkStaff validates the id, that the staff member exists, and that they offer the service.

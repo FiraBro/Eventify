@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/FiraBro/local-go/internal/cacheaside"
 	"github.com/FiraBro/local-go/internal/models"
@@ -49,7 +50,7 @@ func (s *ServiceService) SetReadCache(store cacheaside.Store) { s.cache = store 
 
 func servicesListCacheKey() string {
 	sum := sha256.Sum256([]byte("all-services-v1"))
-	return "local-go:services:list:v1:" + hex.EncodeToString(sum[:])
+	return servicesListCacheNamespace + ":" + hex.EncodeToString(sum[:])
 }
 
 func NewServiceService(repo *repositories.ServiceRepository) *ServiceService {
@@ -68,12 +69,14 @@ func (s *ServiceService) Create(ctx context.Context, service *models.Service) er
 		return err
 	}
 
-	// 2. Call Repo
-	return s.repo.Create(ctx, service)
+	// Invalidate only after the repository confirms the write succeeded.
+	return mutateAndInvalidate(ctx, s.cache, []string{servicesListCacheNamespace, availabilityCacheNamespace}, func(ctx context.Context) error {
+		return s.repo.Create(ctx, service)
+	})
 }
 
 func (s *ServiceService) GetAll(ctx context.Context) ([]models.Service, error) {
-	return cacheaside.Load(ctx, s.cache, &s.cacheGroup, servicesListCacheKey(), cacheaside.ServicesTTL, s.repo.GetAll)
+	return cacheaside.LoadVersioned(ctx, s.cache, &s.cacheGroup, servicesListCacheNamespace, strings.TrimPrefix(servicesListCacheKey(), servicesListCacheNamespace+":"), cacheaside.ServicesTTL, s.repo.GetAll)
 }
 
 func (s *ServiceService) GetByID(ctx context.Context, id string) (*models.Service, error) {
@@ -117,16 +120,19 @@ func (s *ServiceService) Update(ctx context.Context, id string, req *models.Upda
 		existing.DurationMinutes = *req.DurationMinutes
 	}
 
-	// 3. Save to database via REPO
-	if err := s.repo.Update(ctx, id, existing); err != nil {
-		return nil, err
-	}
-
-	return existing, nil
+	// 3. Save, then invalidate the shared list and availability namespaces.
+	return cacheaside.Mutate(ctx, s.cache, []string{servicesListCacheNamespace, availabilityCacheNamespace}, func(ctx context.Context) (*models.Service, error) {
+		if err := s.repo.Update(ctx, id, existing); err != nil {
+			return nil, err
+		}
+		return existing, nil
+	})
 }
 
 func (s *ServiceService) Delete(ctx context.Context, id string) error {
-	return s.repo.Delete(ctx, id)
+	return mutateAndInvalidate(ctx, s.cache, []string{servicesListCacheNamespace, availabilityCacheNamespace}, func(ctx context.Context) error {
+		return s.repo.Delete(ctx, id)
+	})
 }
 
 func (s *ServiceService) GetCategories(ctx context.Context) ([]string, error) {
@@ -141,12 +147,12 @@ func (s *AvailabilityService) SetReadCache(store cacheaside.Store) {
 // availabilityCacheKey creates a cryptographically secure hash representing specific service lookup contexts.
 func availabilityCacheKey(serviceID, date string) string {
 	sum := sha256.Sum256([]byte("service=" + serviceID + "\x00date=" + date))
-	return "local-go:availability:service:v1:" + hex.EncodeToString(sum[:])
+	return availabilityCacheNamespace + ":" + hex.EncodeToString(sum[:])
 }
 
 // GetServiceSlots checks cache layers before executing the heavy query resolver function.
 func (s *AvailabilityService) GetServiceSlots(ctx context.Context, serviceID, date string) ([]string, error) {
-	return cacheaside.Load(ctx, s.cache, &s.cacheGroup, availabilityCacheKey(serviceID, date), cacheaside.AvailabilityTTL, func(loadCtx context.Context) ([]string, error) {
+	return cacheaside.LoadVersioned(ctx, s.cache, &s.cacheGroup, availabilityCacheNamespace, strings.TrimPrefix(availabilityCacheKey(serviceID, date), availabilityCacheNamespace+":"), cacheaside.AvailabilityTTL, func(loadCtx context.Context) ([]string, error) {
 		staffList, err := s.repo.GetStaffByService(loadCtx, serviceID)
 		if err != nil {
 			return nil, err

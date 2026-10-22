@@ -129,6 +129,8 @@ func main() {
 	availabilityService.SetReadCache(readCache)
 	serviceService.SetReadCache(readCache)
 	settingsService.SetReadCache(readCache)
+	staffService.SetReadCache(readCache)
+	bookingService.SetReadCache(readCache)
 
 	// 7. Handlers
 	authHandler := handlers.NewAuthHandler(authService)

@@ -15,6 +15,7 @@ import (
 type StaffService struct {
 	staffRepo   *repositories.StaffRepository
 	serviceRepo *repositories.ServiceRepository
+	cache       cacheaside.Store
 }
 
 func NewStaffService(
@@ -27,13 +28,24 @@ func NewStaffService(
 	}
 }
 
+// SetReadCache enables best-effort invalidation for availability-affecting writes.
+func (s *StaffService) SetReadCache(store cacheaside.Store) { s.cache = store }
+
 // ---------- STAFF CRUD ----------
 
 func (s *StaffService) Create(ctx context.Context, staff *models.Staff) error {
 	if staff.Name == "" || staff.Email == "" {
 		return errors.New("staff name and email are required")
 	}
-	return s.staffRepo.Create(ctx, staff)
+
+	return mutateAndInvalidate(
+		ctx,
+		s.cache,
+		[]string{availabilityCacheNamespace},
+		func(ctx context.Context) error {
+			return s.staffRepo.Create(ctx, staff)
+		},
+	)
 }
 
 func (s *StaffService) GetAll(ctx context.Context) ([]models.Staff, error) {
@@ -58,7 +70,9 @@ func (s *StaffService) Update(ctx context.Context, id string, staff *models.Staf
 }
 
 func (s *StaffService) Delete(ctx context.Context, id string) error {
-	return s.staffRepo.Delete(ctx, id)
+	return mutateAndInvalidate(ctx, s.cache, []string{availabilityCacheNamespace}, func(ctx context.Context) error {
+		return s.staffRepo.Delete(ctx, id)
+	})
 }
 
 // ---------- SERVICES RELATIONSHIP ----------
@@ -100,7 +114,9 @@ func (s *StaffService) AssignServices(ctx context.Context, staffID string, servi
 			return fmt.Errorf("service ID %s does not exist", sID)
 		}
 	}
-	return s.staffRepo.AssignServices(ctx, staffID, serviceIDs)
+	return mutateAndInvalidate(ctx, s.cache, []string{availabilityCacheNamespace}, func(ctx context.Context) error {
+		return s.staffRepo.AssignServices(ctx, staffID, serviceIDs)
+	})
 }
 
 // ---------- SCHEDULE & HOLIDAYS ----------
@@ -126,12 +142,16 @@ func (s *StaffService) SetSchedule(ctx context.Context, id string, entries []map
 
 	}
 
-	return s.staffRepo.SetSchedule(ctx, id, entries)
+	return mutateAndInvalidate(ctx, s.cache, []string{availabilityCacheNamespace}, func(ctx context.Context) error {
+		return s.staffRepo.SetSchedule(ctx, id, entries)
+	})
 
 }
 
 func (s *StaffService) AddHoliday(ctx context.Context, id, date, reason string) error {
-	return s.staffRepo.AddHoliday(ctx, id, date, reason)
+	return mutateAndInvalidate(ctx, s.cache, []string{availabilityCacheNamespace}, func(ctx context.Context) error {
+		return s.staffRepo.AddHoliday(ctx, id, date, reason)
+	})
 }
 
 // ---------- AVAILABILITY SERVICE ----------
