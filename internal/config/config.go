@@ -33,9 +33,13 @@ type Config struct {
 	ChapaWebhookSecret  string
 	CORSAllowedOrigins  []string
 	MaxRequestBodyBytes int64
+	LogLevel            string
 	ReadHeaderTimeout   time.Duration
 	ReadTimeout         time.Duration
 	WriteTimeout        time.Duration
+	IdleTimeout         time.Duration
+	HealthCheckTimeout  time.Duration
+	ShutdownTimeout     time.Duration
 	SMTPHost            string
 	SMTPPort            string
 	SMTPUser            string
@@ -44,6 +48,16 @@ type Config struct {
 
 // ValidateConfig parses, maps, and rigorously tests environment parameters once at startup
 func ValidateConfig() {
+	for _, key := range []string{"READ_HEADER_TIMEOUT", "READ_TIMEOUT", "WRITE_TIMEOUT", "IDLE_TIMEOUT", "HEALTH_CHECK_TIMEOUT", "SHUTDOWN_TIMEOUT"} {
+		if value := os.Getenv(key); value != "" {
+			duration, err := time.ParseDuration(value)
+			if err != nil || duration <= 0 {
+				fmt.Fprintf(os.Stderr, "CRITICAL CONFIGURATION ERROR: %s must be a positive Go duration\n", key)
+				os.Exit(1)
+			}
+		}
+	}
+
 	cfg := &Config{
 		AppEnv:              getEnv("APP_ENV", "development"),
 		Port:                getEnv("PORT", "8080"),
@@ -56,6 +70,10 @@ func ValidateConfig() {
 		ReadHeaderTimeout:   parseEnvDuration("READ_HEADER_TIMEOUT", 5*time.Second),
 		ReadTimeout:         parseEnvDuration("READ_TIMEOUT", 10*time.Second),
 		WriteTimeout:        parseEnvDuration("WRITE_TIMEOUT", 15*time.Second),
+		IdleTimeout:         parseEnvDuration("IDLE_TIMEOUT", 60*time.Second),
+		HealthCheckTimeout:  parseEnvDuration("HEALTH_CHECK_TIMEOUT", 2*time.Second),
+		ShutdownTimeout:     parseEnvDuration("SHUTDOWN_TIMEOUT", 10*time.Second),
+		LogLevel:            strings.ToLower(strings.TrimSpace(getEnv("LOG_LEVEL", "info"))),
 		SMTPHost:            os.Getenv("SMTP_HOST"),
 		SMTPPort:            os.Getenv("SMTP_PORT"),
 		SMTPUser:            os.Getenv("SMTP_USER"),
@@ -83,6 +101,24 @@ func ValidateConfig() {
 
 func (c *Config) assertSecurityProperties() error {
 	isProd := c.AppEnv == "production"
+
+	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
+	case "", "debug", "info", "warn", "warning", "error":
+	default:
+		return errors.New("LOG_LEVEL must be one of debug, info, warn, or error")
+	}
+	for name, duration := range map[string]time.Duration{
+		"READ_HEADER_TIMEOUT":  c.ReadHeaderTimeout,
+		"READ_TIMEOUT":         c.ReadTimeout,
+		"WRITE_TIMEOUT":        c.WriteTimeout,
+		"IDLE_TIMEOUT":         c.IdleTimeout,
+		"HEALTH_CHECK_TIMEOUT": c.HealthCheckTimeout,
+		"SHUTDOWN_TIMEOUT":     c.ShutdownTimeout,
+	} {
+		if duration < 0 {
+			return fmt.Errorf("%s must not be negative", name)
+		}
+	}
 
 	// 1. Enforce Database Connection Strings existence
 	if c.DatabaseURL == "" {

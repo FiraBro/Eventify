@@ -84,3 +84,27 @@ func TestConfigValidationMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigRejectsUnsupportedLogLevel(t *testing.T) {
+	cfg := &Config{
+		AppEnv:      "development",
+		DatabaseURL: "postgres://localhost:5432/db",
+		JWTSecret:   "development-secret",
+		LogLevel:    "verbose",
+	}
+	if err := cfg.assertSecurityProperties(); err == nil {
+		t.Fatal("expected unsupported log level to be rejected")
+	}
+}
+
+func TestConfigRejectsNegativeTimeout(t *testing.T) {
+	cfg := &Config{
+		AppEnv:      "development",
+		DatabaseURL: "postgres://localhost:5432/db",
+		JWTSecret:   "development-secret",
+		ReadTimeout: -1,
+	}
+	if err := cfg.assertSecurityProperties(); err == nil {
+		t.Fatal("expected negative timeout to be rejected")
+	}
+}

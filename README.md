@@ -689,7 +689,7 @@ The following roadmap describes suggested development priorities, not a claim th
 - [ ] Complete availability calculations and conflict handling.
 - [ ] Add automated integration and end-to-end tests.
 - [ ] Finalize API documentation with OpenAPI.
-- [ ] Add structured logging, health checks, and operational metrics.
+- [x] Add structured logging, health checks, and operational metrics.
 - [ ] Complete payment integration, webhook handling, and refund workflows if required.
 - [ ] Add asynchronous notifications and booking reminders.
 - [ ] Harden production deployment, secrets management, and backup procedures.
@@ -720,3 +720,7 @@ This project is licensed under the MIT License, provided that the repository inc
 ---
 
 **Maintainer:**FiraBro.
+
+## Observability and HTTP lifecycle
+
+The API emits structured JSON logs with request correlation, exposes `GET /healthz`, `GET /readyz`, and Prometheus text metrics at `GET /metrics`, and performs bounded graceful shutdown on termination signals. Configuration defaults and operational semantics are documented in [docs/observability.md](docs/observability.md).

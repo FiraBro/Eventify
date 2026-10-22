@@ -1,11 +1,14 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/FiraBro/local-go/internal/config"
 	// Registers the "postgres" driver used by sql.Open.
@@ -14,21 +17,35 @@ import (
 
 const redacted = "xxxxx"
 
-func InitDB() *sql.DB {
+func OpenDB() (*sql.DB, error) {
 	slog.Info("connecting to PostgreSQL", "addr", redactDSN(config.DBAddr))
-
 	db, err := sql.Open("postgres", config.DBAddr)
 	if err != nil {
-		slog.Error("failed to open PostgreSQL connection", "error", scrub(err, config.DBAddr))
-		os.Exit(1)
+		safeErr := errors.New(scrub(err, config.DBAddr))
+		slog.Error("failed to open PostgreSQL connection", "error", safeErr)
+		return nil, safeErr
 	}
 
-	if err := db.Ping(); err != nil {
-		slog.Error("PostgreSQL ping failed", "error", scrub(err, config.DBAddr))
-		os.Exit(1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		safeErr := errors.New(scrub(err, config.DBAddr))
+		slog.Error("PostgreSQL ping failed", "error", safeErr)
+		return nil, safeErr
 	}
 
 	slog.Info("PostgreSQL connected successfully")
+	return db, nil
+}
+
+// InitDB is retained for compatibility with older internal callers. New startup
+// code should use OpenDB so it can unwind initialization without exiting here.
+func InitDB() *sql.DB {
+	db, err := OpenDB()
+	if err != nil {
+		os.Exit(1)
+	}
 	return db
 }
 

@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -24,6 +24,7 @@ import (
 	"github.com/FiraBro/local-go/internal/gateways"
 	"github.com/FiraBro/local-go/internal/handlers"
 	"github.com/FiraBro/local-go/internal/middlewares"
+	"github.com/FiraBro/local-go/internal/observability"
 	"github.com/FiraBro/local-go/internal/repositories"
 	"github.com/FiraBro/local-go/internal/routes"
 	"github.com/FiraBro/local-go/internal/services"
@@ -37,14 +38,35 @@ const apiBasePath = "/api/v1"
 // @host            localhost:8080
 // @BasePath        /api/v1
 func main() {
-	// 1. Environment
-	if err := godotenv.Load(); err != nil {
-		log.Println("WARNING: .env file not found; using system environment variables")
+	if err := run(); err != nil {
+		slog.Error("application stopped with an error", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	// 1. Environment and validated configuration
+	envErr := godotenv.Load()
+	config.ValidateConfig()
+	logger, err := observability.NewJSONLogger(config.AppConfig.LogLevel, os.Stdout)
+	if err != nil {
+		return err
+	}
+	slog.SetDefault(logger)
+	if envErr != nil {
+		logger.Info(".env file not found; using environment variables")
 	}
 
-	// 2. Configuration and database
-	config.ValidateConfig()
-	dbConn := db.InitDB()
+	// 2. PostgreSQL is essential; fail startup cleanly if it cannot be opened.
+	dbConn, err := db.OpenDB()
+	if err != nil {
+		return fmt.Errorf("initialize PostgreSQL: %w", err)
+	}
+	defer func() {
+		if err := dbConn.Close(); err != nil {
+			logger.Error("failed to close PostgreSQL connection pool", "error", err)
+		}
+	}()
 
 	// 3. Repositories
 	userRepo := repositories.NewUserRepository(dbConn)
@@ -64,16 +86,13 @@ func main() {
 	var readCache cacheaside.Store
 
 	if err := config.InitRedis(); err != nil {
-		log.Printf(
-			"WARNING: Redis unavailable; read caching disabled: %v",
-			err,
-		)
+		logger.Warn("Redis unavailable; continuing with fail-open behavior")
 
 		// InitRedis creates the client before pinging it.
 		// Close it if initialization fails.
 		if config.RedisClient != nil {
 			if closeErr := config.RedisClient.Close(); closeErr != nil {
-				log.Printf("WARNING: failed to close Redis client: %v", closeErr)
+				logger.Warn("failed to close unavailable Redis client", "error", closeErr)
 			}
 			config.RedisClient = nil
 		}
@@ -86,7 +105,7 @@ func main() {
 
 		defer func() {
 			if err := config.RedisClient.Close(); err != nil {
-				log.Printf("WARNING: failed to close Redis client: %v", err)
+				logger.Error("failed to close Redis client", "error", err)
 			}
 		}()
 	}
@@ -148,16 +167,26 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	r := gin.Default()
+	r := gin.New()
 
 	if err := r.SetTrustedProxies(nil); err != nil {
-		log.Fatalf("Failed to set trusted proxies: %v", err)
+		return fmt.Errorf("configure trusted proxies: %w", err)
 	}
 
-	// HTTP hardening middleware
-	r.Use(middlewares.SecurityHeaders())
-	r.Use(middlewares.ExplicitCORS())
-	r.Use(middlewares.RequestBodyLimiter())
+	metrics := observability.NewMetrics()
+	r.Use(
+		middlewares.RequestID(),
+		middlewares.HTTPObservability(logger, metrics),
+		middlewares.Recovery(logger),
+		middlewares.SecurityHeaders(),
+		middlewares.ExplicitCORS(),
+		middlewares.RequestBodyLimiter(),
+	)
+
+	// Operational endpoints stay outside the versioned business API.
+	r.GET("/healthz", handlers.Healthz)
+	r.GET("/readyz", handlers.Readyz(dbConn, config.AppConfig.HealthCheckTimeout))
+	r.GET("/metrics", gin.WrapH(metrics.Handler()))
 
 	// 8b. API routes
 	api := r.Group(apiBasePath)
@@ -179,63 +208,52 @@ func main() {
 	}
 
 	// 9. HTTP server configuration
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	port := config.AppConfig.Port
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
 
 	srv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           r,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: config.AppConfig.ReadHeaderTimeout,
+		ReadTimeout:       config.AppConfig.ReadTimeout,
+		WriteTimeout:      config.AppConfig.WriteTimeout,
+		IdleTimeout:       config.AppConfig.IdleTimeout,
 		MaxHeaderBytes:    1 << 20,
+		BaseContext: func(net.Listener) context.Context {
+			return appCtx
+		},
 	}
 
-	// 10. Start server
+	// 10. Start the HTTP server and monitor termination signals.
 	serverErrors := make(chan error, 1)
-
+	serverDone := make(chan struct{})
 	go func() {
-		slog.Info("server running", "port", port, "base_path", apiBasePath)
-
-		if os.Getenv("APP_ENV") != "production" {
-			slog.Info(
-				"swagger docs available",
-				"url",
-				"http://localhost:"+port+"/swagger/index.html",
-			)
+		defer close(serverDone)
+		logger.Info("HTTP server starting", "port", port, "base_path", apiBasePath)
+		if config.AppConfig.AppEnv != "production" {
+			logger.Info("Swagger documentation enabled", "route", "/swagger/*any")
 		}
-
-		if err := srv.ListenAndServe(); err != nil &&
-			!errors.Is(err, http.ErrServerClosed) {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErrors <- err
 		}
 	}()
 
-	// 11. Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(quit)
-
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
+	var runErr error
 	select {
-	case sig := <-quit:
-		log.Printf("Received signal %s; shutting down server...", sig)
+	case <-signalCtx.Done():
+		logger.Info("shutdown signal received")
 	case err := <-serverErrors:
-		log.Printf("HTTP server failed: %v", err)
+		logger.Error("HTTP server failed", "error", err)
+		runErr = err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("Graceful shutdown failed: %v", err)
-
-		if closeErr := srv.Close(); closeErr != nil {
-			log.Printf("Failed to close HTTP server: %v", closeErr)
-		}
+	if shutdownErr := observability.ShutdownHTTPServer(srv, config.AppConfig.ShutdownTimeout, cancelApp, logger); shutdownErr != nil && runErr == nil {
+		runErr = shutdownErr
 	}
-
-	log.Println("Server stopped")
+	<-serverDone
+	logger.Info("application shutdown complete")
+	return runErr
 }

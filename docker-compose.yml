@@ -2,6 +2,7 @@ services:
   db:
     image: postgres:16.3
     container_name: local_go_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -17,10 +18,24 @@ services:
     ports:
       - "5433:5432"
 
+  redis:
+    image: redis:7-alpine
+    container_name: local_go_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis_data:/data
+
   api:
     build:
       context: .
     container_name: local_go_api
+    restart: unless-stopped
     command: ["bash", "/app/docker-entrypoint.sh"]
     ports:
       - "8080:8080"
@@ -34,22 +49,28 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
 
-      # --- CRITICAL DATABASE FIXES ---
-      # 1. Full URL Connection Variants (Points to service 'db' on internal port 5432)
+      # Database connection URLs
       DB_ADDR: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
       DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
       DB_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
 
-      # 2. Individual Variable Breakdown Variants (In case code builds connection string piece-by-piece)
+      # Individual database configuration
       DB_HOST: "db"
       POSTGRES_HOST: "db"
       DB_PORT: "5432"
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_NAME: ${POSTGRES_DB}
+
+      # Redis cache
+      REDIS_URL: "redis://redis:6379/0"
+
     depends_on:
       db:
         condition: service_healthy
+      # redis:
+      #   condition: service_healthy
 
 volumes:
   db_data:
+  redis_data:

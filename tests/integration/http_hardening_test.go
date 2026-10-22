@@ -9,6 +9,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/FiraBro/local-go/internal/middlewares"
 	"github.com/gin-gonic/gin"
 )
 

@@ -16,7 +16,7 @@ func SecurityHeaders() gin.HandlerFunc {
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-XSS-Protection", "1; mode=block")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-		
+
 		// Content-Security-Policy restricted to api data delivery scopes
 		c.Header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; sandbox")
 
@@ -62,7 +62,7 @@ func ExplicitCORS() gin.HandlerFunc {
 		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, PATCH, DELETE")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Request-ID")
 		c.Header("Access-Control-Max-Age", "86400")
 
 		// Instantly intercept preflight OPTIONS transactions
@@ -79,7 +79,7 @@ func ExplicitCORS() gin.HandlerFunc {
 func RequestBodyLimiter() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Default JSON threshold constraint cap of 2MB to protect memory pools
-		var limit int64 = 2 << 20 
+		var limit int64 = 2 << 20
 
 		// Read dynamic size limits if specified in environment configurations
 		if envLimit := os.Getenv("MAX_REQUEST_BODY_BYTES"); envLimit != "" {
