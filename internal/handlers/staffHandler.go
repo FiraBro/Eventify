@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"sort"
 
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/services"
@@ -195,39 +194,32 @@ func (h *StaffHandler) GetStaffAvailability(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"staff_id": staffID, "date": date, "available_slots": slots})
 }
 
-// GET /availability/services/:serviceId?date=2025-12-25
 func (h *StaffHandler) GetServiceAvailability(c *gin.Context) {
 	serviceID := c.Param("serviceId")
 	date := c.Query("date")
 
 	if date == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Date query parameter is required (YYYY-MM-DD)"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Date query parameter is required (YYYY-MM-DD)",
+		})
 		return
 	}
 
-	// Fetch staff members capable of performing this service via the service layer
-	staffList, err := h.service.GetStaffByService(c.Request.Context(), serviceID)
+	slots, err := h.availabilityService.GetServiceSlots(
+		c.Request.Context(),
+		serviceID,
+		date,
+	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch qualified staff"})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to calculate service availability",
+		})
 		return
 	}
 
-	uniqueSlots := make(map[string]bool)
-	for _, staff := range staffList {
-		slots, err := h.availabilityService.GetStaffSlots(c.Request.Context(), staff.ID, date)
-		if err != nil {
-			continue // Skip individual staff errors to provide partial results if possible
-		}
-		for _, slot := range slots {
-			uniqueSlots[slot] = true
-		}
-	}
-
-	result := []string{}
-	for slot := range uniqueSlots {
-		result = append(result, slot)
-	}
-	sort.Strings(result)
-
-	c.JSON(http.StatusOK, gin.H{"service_id": serviceID, "date": date, "available_slots": result})
+	c.JSON(http.StatusOK, gin.H{
+		"service_id":      serviceID,
+		"date":            date,
+		"available_slots": slots,
+	})
 }
