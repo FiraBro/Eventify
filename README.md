@@ -608,55 +608,46 @@ Persistent database data should use a Docker volume. Avoid deleting volumes in e
 
 ## Testing and Code Quality
 
-Run the Go test suite:
+Use the Makefile targets so local checks match CI:
 
 ```bash
-go test ./...
+make fmt-check       # Fail if any Go file is not gofmt-formatted
+make lint            # golangci-lint (version pinned in Makefile)
+make test-unit       # Ordinary unit/package tests
+make test-race       # Tests with Go's race detector
+make coverage        # Tests, coverage.out, and coverage-summary.txt
+make govulncheck     # Reachable vulnerabilities from the Go vulnerability database
+make gosec           # Static security analysis
+make security        # Run both security scanners
 ```
 
-Run the PostgreSQL integration smoke test against a disposable Testcontainers database:
+`make tools` installs the pinned `golangci-lint`; `make security-install` installs the pinned
+`gosec` and `govulncheck` binaries into `.bin/`. These commands require network access to fetch
+the pinned tools and their modules. A scanner failure, including an unavailable vulnerability
+database, is a failed check—not a clean security result.
+
+Run the integration suite separately:
 
 ```bash
-go test -tags=integration -count=1 ./tests/integration
+go test -tags=integration -count=1 -timeout=20m ./tests/integration
 ```
 
-The integration test requires a running Docker daemon and pulls `postgres:16.3` if it is not
-available locally. It starts its own container with generated credentials and does not read
-`DB_ADDR` or fall back to a developer database. The test applies `cmd/migrate/migration` using
-the same golang-migrate version as the Docker image, then verifies connectivity and migration
-version 18. Container and database resources are cleaned up when the test ends.
+Integration tests use disposable PostgreSQL and Redis containers through Testcontainers; Docker
+must be running. The PostgreSQL tests generate credentials and apply the repository migrations to
+a new database rather than using `DB_ADDR`. The real-Redis cache invalidation test runs only when
+`REDIS_URL` points to a dedicated disposable Redis instance; CI configures its own Redis service
+and database for this test. Do not point integration tests at production infrastructure.
 
-Run tests with the race detector:
+GitHub Actions runs on pushes and pull requests targeting `main`. Its single verification job
+checks formatting and lint, runs `govulncheck` and `gosec`, executes ordinary and race-detector
+tests, generates a coverage report, and runs the tagged integration suite. Coverage output is
+uploaded as a short-retention workflow artifact. Dependabot proposes weekly Go-module and
+GitHub Actions updates; CI validates those proposed changes.
 
-```bash
-go test -race ./...
-```
-
-Run static analysis:
-
-```bash
-go vet ./...
-```
-
-Format the code:
-
-```bash
-gofmt -w .
-```
-
-For meaningful production confidence, add:
-
-- Unit tests for business rules.
-- Repository integration tests against PostgreSQL.
-- HTTP handler tests for validation and error responses.
-- Authorization tests for customer, staff, and administrator permissions.
-- Concurrent booking tests to detect double-booking defects.
-- Migration tests against a clean database.
-- Frontend tests for forms, route guards, and API error handling.
-
-A successful build alone does not demonstrate that the booking workflow is safe under concurrent requests.
-
----
+The integration suite requires a working Docker daemon and may pull `postgres:16.3` and
+`redis:7-alpine` when those images are not cached. Container and database resources are cleaned
+up by the tests. A successful build alone does not demonstrate that the booking workflow is safe
+under concurrent requests.
 
 ## Security Considerations
 

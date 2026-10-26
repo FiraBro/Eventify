@@ -4,10 +4,12 @@
 !.env.example
 
 # build and tool output
+.bin/
 bin/
 tmp/
 lint.txt
 coverage.out
+coverage-summary.txt
 *.testschema_*.sql
 *.dump
 schema_*.sql

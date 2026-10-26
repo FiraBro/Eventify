@@ -16,16 +16,20 @@ STEPS ?= 1
 # Local security tool installation directory
 GOBIN_LOCAL := $(CURDIR)/.bin
 
-.PHONY: help build run test lint fmt vuln tools migrate-up migrate-down schema-check
-.PHONY: security-install security-scan gosec govulncheck
+.PHONY: help build run test test-unit test-race coverage lint fmt fmt-check vuln tools migrate-up migrate-down schema-check
+.PHONY: security-install security-scan security gosec govulncheck
 
 help:
 	@echo "Available commands:"
 	@echo "  build             - Build the server binary"
 	@echo "  run               - Run the server locally"
-	@echo "  test              - Run tests with the race detector"
+	@echo "  test              - Run tests with the race detector (compatibility alias)"
+	@echo "  test-unit         - Run the ordinary Go test suite"
+	@echo "  test-race         - Run tests with the race detector"
+	@echo "  coverage          - Run tests and write coverage.out + summary"
 	@echo "  lint              - Run golangci-lint"
 	@echo "  fmt               - Format Go source files"
+	@echo "  fmt-check         - Fail if Go files need gofmt"
 	@echo "  vuln              - Run Go vulnerability checks"
 	@echo "  tools             - Install golangci-lint"
 	@echo "  migrate-up        - Apply database migrations"
@@ -35,6 +39,7 @@ help:
 	@echo "  gosec             - Run static security analysis"
 	@echo "  govulncheck       - Check reachable vulnerabilities"
 	@echo "  security-scan     - Run both security scans"
+	@echo "  security          - Alias for security-scan"
 
 # Build the application
 build:
@@ -50,12 +55,25 @@ run:
 
 # The race detector requires CGO and a working C compiler.
 # On Ubuntu, install one with: sudo apt install build-essential
-test:
+test: test-race
+
+test-unit:
+	go test -count=1 ./...
+
+test-race:
 	go test -race -count=1 ./...
+
+coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out | tee coverage-summary.txt
 
 # Lint the project
 lint:
 	golangci-lint run ./...
+
+# Fail when any Go source needs formatting; do not mutate files.
+fmt-check:
+	@files="$$(find . -type f -name '*.go' -not -path './vendor/*' -not -path './.git/*' -print0 | xargs -0 gofmt -l)"; if [ -n "$$files" ]; then printf '%s\n' 'Go files need gofmt:' "$$files"; exit 1; fi
 
 # Format Go source files
 fmt:
@@ -105,3 +123,5 @@ govulncheck:
 security-scan: gosec govulncheck
 	@echo "Security scans completed successfully."
 
+
+security: security-scan

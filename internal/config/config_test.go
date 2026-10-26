@@ -6,16 +6,6 @@ import (
 )
 
 func TestConfigValidationMatrix(t *testing.T) {
-	// Preserving original environment parameters cleanly before isolation context changes
-	origEnv := os.Getenv("APP_ENV")
-	origDb := os.Getenv("DATABASE_URL")
-	origJwt := os.Getenv("JWT_SECRET")
-	defer func() {
-		os.Setenv("APP_ENV", origEnv)
-		os.Setenv("DATABASE_URL", origDb)
-		os.Setenv("JWT_SECRET", origJwt)
-	}()
-
 	tests := []struct {
 		name        string
 		envSetup    map[string]string
@@ -43,7 +33,7 @@ func TestConfigValidationMatrix(t *testing.T) {
 			envSetup: map[string]string{
 				"APP_ENV":      "production",
 				"DATABASE_URL": "postgres://localhost:5432/db",
-				"JWT_SECRET":   "weak-short-prod-secret", // Under 32 characters
+				"JWT_SECRET":   "weak-short-prod-secret", // #nosec G101 -- Deliberately weak test fixture.
 			},
 			expectError: true,
 		},
@@ -61,9 +51,18 @@ func TestConfigValidationMatrix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Clearenv()
-			for k, v := range tt.envSetup {
-				os.Setenv(k, v)
+			// Set every environment variable read by this test so inherited
+			// developer or CI environment values cannot affect the result.
+			for _, key := range []string{
+				"APP_ENV",
+				"DATABASE_URL",
+				"JWT_SECRET",
+				"CORS_ALLOWED_ORIGINS",
+			} {
+				t.Setenv(key, "")
+			}
+			for key, value := range tt.envSetup {
+				t.Setenv(key, value)
 			}
 
 			cfg := &Config{
@@ -72,19 +71,23 @@ func TestConfigValidationMatrix(t *testing.T) {
 				JWTSecret:           os.Getenv("JWT_SECRET"),
 				MaxRequestBodyBytes: 2 << 20,
 			}
-			origins := os.Getenv("CORS_ALLOWED_ORIGINS")
-			if origins != "" {
+
+			if origins := os.Getenv("CORS_ALLOWED_ORIGINS"); origins != "" {
 				cfg.CORSAllowedOrigins = []string{origins}
 			}
 
 			err := cfg.assertSecurityProperties()
 			if (err != nil) != tt.expectError {
-				t.Errorf("case %q: expected error validation status %t, got error: %v", tt.name, tt.expectError, err)
+				t.Errorf(
+					"case %q: expected error validation status %t, got error: %v",
+					tt.name,
+					tt.expectError,
+					err,
+				)
 			}
 		})
 	}
 }
-
 func TestConfigRejectsUnsupportedLogLevel(t *testing.T) {
 	cfg := &Config{
 		AppEnv:      "development",
