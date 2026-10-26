@@ -219,7 +219,9 @@ func (r *StaffRepository) GetAvailabilityData(ctx context.Context, staffID strin
 	if err != nil {
 		return nil, nil, err
 	}
-	defer hRows.Close()
+	defer func() {
+		_ = hRows.Close()
+	}()
 
 	var holidays []string
 	for hRows.Next() {

@@ -73,7 +73,7 @@ func TestRequestIDsAreIsolatedAcrossConcurrentRequests(t *testing.T) {
 	r, _ := testObservabilityRouter(&output)
 	r.GET("/correlate", func(c *gin.Context) {
 		c.Writer.WriteHeader(http.StatusOK)
-		fmt.Fprint(c.Writer, c.GetString("request_id"))
+		_, _ = fmt.Fprint(c.Writer, c.GetString("request_id"))
 	})
 
 	const count = 64

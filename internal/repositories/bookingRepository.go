@@ -50,7 +50,9 @@ func (r *BookingRepository) queryList(ctx context.Context, query string, args ..
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	bookings := []models.Booking{}
 	for rows.Next() {
@@ -217,7 +219,9 @@ func (r *BookingRepository) StaffCandidates(ctx context.Context, serviceID strin
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var out []StaffCandidate
 	for rows.Next() {
@@ -245,7 +249,9 @@ func (r *BookingRepository) StaffShifts(ctx context.Context, staffIDs []string) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	for rows.Next() {
 		var s ShiftRow
@@ -272,7 +278,9 @@ func (r *BookingRepository) StaffOnHoliday(ctx context.Context, staffIDs []strin
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	for rows.Next() {
 		var id string

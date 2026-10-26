@@ -99,7 +99,7 @@ func (m *Metrics) Handler() http.Handler {
 		}
 		m.mu.Unlock()
 
-		fmt.Fprintln(w, "# HELP http_requests_total Total completed HTTP requests.")
+		_, _ = fmt.Fprintln(w, "# HELP http_requests_total Total completed HTTP requests.")
 		fmt.Fprintln(w, "# TYPE http_requests_total counter")
 		for _, key := range labels {
 			fmt.Fprintf(w, "http_requests_total%s %d\n", labelSet(key, ""), statsCopy[key].count)
