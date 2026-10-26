@@ -64,7 +64,7 @@ func (r *ServiceRepository) GetAll(ctx context.Context) ([]models.Service, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var services []models.Service
 	for rows.Next() {
@@ -126,7 +126,7 @@ func (r *ServiceRepository) GetCategories(ctx context.Context) ([]string, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var categories []string
 	for rows.Next() {
