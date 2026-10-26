@@ -30,7 +30,7 @@ func (r *ReportRepository) BookingsByStatus(ctx context.Context, start, end time
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	counts := map[string]int{}
 	for rows.Next() {
@@ -58,7 +58,7 @@ func (r *ReportRepository) BookingsDaily(ctx context.Context, start, end time.Ti
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	daily := []models.DailyCount{}
 	for rows.Next() {
@@ -113,7 +113,7 @@ func (r *ReportRepository) RevenueSeries(ctx context.Context, start, end time.Ti
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	series := []models.RevenuePoint{}
 	for rows.Next() {
@@ -152,7 +152,7 @@ func (r *ReportRepository) ServicePerformance(ctx context.Context, start, end ti
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := []models.ServiceReportRow{}
 	for rows.Next() {
@@ -187,7 +187,7 @@ func (r *ReportRepository) StaffPerformance(ctx context.Context, start, end time
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := []models.StaffReportRow{}
 	for rows.Next() {
@@ -222,7 +222,7 @@ func (r *ReportRepository) CustomerPerformance(ctx context.Context, start, end t
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := []models.CustomerReportRow{}
 	for rows.Next() {
