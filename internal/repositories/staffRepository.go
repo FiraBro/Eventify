@@ -25,7 +25,7 @@ func (r *StaffRepository) GetAll(ctx context.Context) ([]models.Staff, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var staffList []models.Staff
 	for rows.Next() {
@@ -86,7 +86,7 @@ func (r *StaffRepository) GetServiceIDs(ctx context.Context, staffID string) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []string
 	for rows.Next() {
@@ -110,7 +110,7 @@ func (r *StaffRepository) GetStaffByService(ctx context.Context, serviceID strin
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var staffList []models.Staff
 	for rows.Next() {
@@ -181,7 +181,7 @@ func (r *StaffRepository) GetSchedule(ctx context.Context, staffID string) ([]ma
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var schedule []map[string]string
 	for rows.Next() {
