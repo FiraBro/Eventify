@@ -64,7 +64,9 @@ func (r *NotificationRepository) GetByUserID(ctx context.Context, userID string,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	items := []models.Notification{}
 	for rows.Next() {

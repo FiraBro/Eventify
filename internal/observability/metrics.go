@@ -76,6 +76,11 @@ func (m *Metrics) Begin() func(method, route string, status int, duration time.D
 // Handler exposes only bounded-cardinality operational metrics.
 func (m *Metrics) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		write := func(format string, args ...any) bool {
+			_, err := fmt.Fprintf(w, format, args...)
+			return err == nil
+		}
+
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		m.mu.Lock()
@@ -98,33 +103,62 @@ func (m *Metrics) Handler() http.Handler {
 			statsCopy[key] = *value
 		}
 		m.mu.Unlock()
-
-		_, _ = fmt.Fprintln(w, "# HELP http_requests_total Total completed HTTP requests.")
-		fmt.Fprintln(w, "# TYPE http_requests_total counter")
-		for _, key := range labels {
-			fmt.Fprintf(w, "http_requests_total%s %d\n", labelSet(key, ""), statsCopy[key].count)
+		if !write("# HELP http_requests_total Total completed HTTP requests." + "\\n") {
+			return
 		}
-		fmt.Fprintln(w, "# HELP http_errors_total Total HTTP responses with status code 400 or greater.")
-		fmt.Fprintln(w, "# TYPE http_errors_total counter")
+		if !write("# TYPE http_requests_total counter" + "\\n") {
+			return
+		}
 		for _, key := range labels {
-			if errors := statsCopy[key].errors; errors > 0 {
-				fmt.Fprintf(w, "http_errors_total%s %d\n", labelSet(key, ""), errors)
+			if !write("http_requests_total%s %d\n", labelSet(key, ""), statsCopy[key].count) {
+				return
 			}
 		}
-		fmt.Fprintln(w, "# HELP http_request_duration_seconds HTTP request duration in seconds.")
-		fmt.Fprintln(w, "# TYPE http_request_duration_seconds histogram")
+		if !write("# HELP http_errors_total Total HTTP responses with status code 400 or greater." + "\\n") {
+			return
+		}
+		if !write("# TYPE http_errors_total counter" + "\\n") {
+			return
+		}
+		for _, key := range labels {
+			if errors := statsCopy[key].errors; errors > 0 {
+				if !write("http_errors_total%s %d\n", labelSet(key, ""), errors) {
+					return
+				}
+			}
+		}
+		if !write("# HELP http_request_duration_seconds HTTP request duration in seconds." + "\\n") {
+			return
+		}
+		if !write("# TYPE http_request_duration_seconds histogram" + "\\n") {
+			return
+		}
 		for _, key := range labels {
 			stats := statsCopy[key]
 			for i, bound := range durationBuckets {
-				fmt.Fprintf(w, "http_request_duration_seconds_bucket%s %d\n", labelSet(key, strconv.FormatFloat(bound, 'g', -1, 64)), stats.buckets[i])
+				if !write("http_request_duration_seconds_bucket%s %d\n", labelSet(key, strconv.FormatFloat(bound, 'g', -1, 64)), stats.buckets[i]) {
+					return
+				}
 			}
-			fmt.Fprintf(w, "http_request_duration_seconds_bucket%s %d\n", labelSet(key, "+Inf"), stats.buckets[len(durationBuckets)])
-			fmt.Fprintf(w, "http_request_duration_seconds_sum%s %s\n", labelSet(key, ""), strconv.FormatFloat(stats.sumSecs, 'g', -1, 64))
-			fmt.Fprintf(w, "http_request_duration_seconds_count%s %d\n", labelSet(key, ""), stats.count)
+			if !write("http_request_duration_seconds_bucket%s %d\n", labelSet(key, "+Inf"), stats.buckets[len(durationBuckets)]) {
+				return
+			}
+			if !write("http_request_duration_seconds_sum%s %s\n", labelSet(key, ""), strconv.FormatFloat(stats.sumSecs, 'g', -1, 64)) {
+				return
+			}
+			if !write("http_request_duration_seconds_count%s %d\n", labelSet(key, ""), stats.count) {
+				return
+			}
 		}
-		fmt.Fprintln(w, "# HELP http_requests_in_flight Number of HTTP requests currently being handled.")
-		fmt.Fprintln(w, "# TYPE http_requests_in_flight gauge")
-		fmt.Fprintf(w, "http_requests_in_flight %d\n", m.inFlight.Load())
+		if !write("# HELP http_requests_in_flight Number of HTTP requests currently being handled." + "\\n") {
+			return
+		}
+		if !write("# TYPE http_requests_in_flight gauge" + "\\n") {
+			return
+		}
+		if !write("http_requests_in_flight %d\n", m.inFlight.Load()) {
+			return
+		}
 	})
 }
 
