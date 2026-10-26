@@ -143,7 +143,7 @@ func (r *UserRepository) FetchAllUsers() ([]models.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var users []models.User
 	for rows.Next() {
@@ -275,7 +275,7 @@ func (r *UserRepository) FetchUsersPaginated(page, limit int) ([]models.User, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var users []models.User
 	for rows.Next() {
