@@ -13,3 +13,6 @@ coverage-summary.txt
 *.testschema_*.sql
 *.dump
 schema_*.sql
+
+# Local database backups
+/backups/

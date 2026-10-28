@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+
+# Build the API using the exact Go toolchain required by go.mod.
+FROM golang:1.26.9-alpine AS builder
+
+RUN apk add --no-cache ca-certificates git
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+
+RUN go mod download \
+    && go install -tags "postgres" github.com/golang-migrate/migrate/v4/cmd/migrate@v4.20.1
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -trimpath \
+    -ldflags="-s -w" \
+    -o /out/eventify-api \
+    ./cmd/server
+
+# Runtime image: no Go compiler, Air, or source bind mount.
+FROM alpine:3.22 AS runtime
+
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S app \
+    && adduser -S -G app app \
+    && mkdir -p /app/migrations \
+    && chown -R app:app /app
+
+WORKDIR /app
+
+COPY --from=builder --chown=app:app /out/eventify-api /app/eventify-api
+COPY --from=builder --chown=app:app /go/bin/migrate /usr/local/bin/migrate
+COPY --from=builder --chown=app:app /src/cmd/migrate/migration /app/migrations
+
+USER app:app
+
+EXPOSE 8080
+
+ENTRYPOINT ["/app/eventify-api"]
