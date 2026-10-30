@@ -1,74 +1,84 @@
-# Booking Contention Test
+# Booking Contention Load Test
 
-## Objective
+## 1. Objective
 
-Validate booking creation under concurrent requests and verify that the PostgreSQL exclusion constraint prevents overlapping active bookings for the same staff member.
+Validate booking concurrency behavior under simultaneous requests using k6.
 
-## Test Environment
+The test verifies that multiple requests targeting the same staff member and time slot cannot create overlapping active bookings.
 
-- **API:** Local development environment
-- **Database:** PostgreSQL
-- **Load-testing tool:** k6 v2.3.0
-- **Virtual users:** 10
-- **Iterations:** 1 per virtual user
-- **Benchmark service duration:** 60 minutes
-- **Benchmark staff:** One eligible staff member
-- **Test date:** 2026-11-02
+## 2. Test Environment
 
-## Scenarios
+- API: Local development environment
+- Database: PostgreSQL 16.3
+- Load tool: k6
+- Virtual users: 10
+- Iterations: 1 per virtual user
+- Service: Performance Benchmark Service
+- Staff: Performance Benchmark Staff
+- Test date: November 2, 2026
+- Booking duration: 60 minutes
 
-### 1. Explicit Staff Assignment
+## 3. Explicit Staff Assignment
 
-All 10 virtual users submitted a booking request for the same staff member and the same 09:00 UTC time slot.
+**Scenario:** Ten concurrent requests submit a booking for the same staff member and time slot (09:00–10:00 UTC).
 
-**Results:**
+| Metric                   |   Result |
+| ------------------------ | -------: |
+| Requests                 |       10 |
+| Created bookings (201)   |        1 |
+| Expected conflicts (409) |        9 |
+| Unexpected responses     |        0 |
+| k6 failed requests       |       0% |
+| Checks passed            |    10/10 |
+| HTTP p95                 | 35.86 ms |
+| HTTP average             | 29.32 ms |
+| HTTP maximum             | 36.88 ms |
 
-- Booking created: 1
-- Expected conflicts (HTTP 409): 9
-- Unexpected responses: 0
-- k6 HTTP request failure rate: 90%
-- HTTP p95 latency: 9,056.65 ms
+The initial explicit-staff run also produced one booking and nine conflicts. However, k6 initially counted HTTP 409 responses as failed requests because the expected-status callback was not configured correctly. The corrected run uses `http.expectedStatuses(201, 409)`.
 
-**Note:** The application returned the expected booking outcomes. However, this initial run used incorrect k6 expected-response handling, causing HTTP 409 responses to be counted as failed requests.
+Result file: `docs/performance/step9-booking-contention-explicit-corrected.json`
 
-**Evidence:** `step9-booking-contention-explicit.json`
+## 4. Automatic Staff Assignment
 
-### 2. Automatic Staff Assignment
+**Scenario:** Ten concurrent requests submit bookings for the same service and time slot (10:30–11:30 UTC), without specifying a staff member.
 
-All 10 virtual users submitted a booking request for the same service and the same 10:30 UTC time slot, without specifying a staff member.
+| Metric                   |   Result |
+| ------------------------ | -------: |
+| Requests                 |       10 |
+| Created bookings (201)   |        1 |
+| Expected conflicts (409) |        9 |
+| Unexpected responses     |        0 |
+| k6 failed requests       |       0% |
+| Checks passed            |    10/10 |
+| HTTP p95                 | 58.29 ms |
 
-**Results:**
+Result file: `docs/performance/step9-booking-contention-auto.json`
 
-- Booking created: 1
-- Expected conflicts (HTTP 409): 9
-- Unexpected responses: 0
-- k6 HTTP request failure rate: 0%
-- HTTP p95 latency: 58.29 ms
+## 5. Database Verification
 
-**Note:** The corrected k6 expected-response handling recognized HTTP 201 and HTTP 409 as expected responses.
+PostgreSQL confirmed one pending booking for each tested slot:
 
-**Evidence:** `step9-booking-contention-auto.json`
+- Explicit assignment: 09:00–10:00 UTC.
+- Automatic assignment: 10:30–11:30 UTC.
+- Corrected explicit assignment: 11:30–12:30 UTC.
 
-## Database Verification
+The database exclusion constraint `bookings_no_staff_overlap` prevented competing active bookings from occupying the same staff/time interval.
 
-Both scenarios were verified against the development PostgreSQL database.
+## 6. Conclusion
 
-- Explicit assignment: one pending booking at 09:00 UTC.
-- Automatic assignment: one pending booking at 10:30 UTC.
-- Both bookings were assigned to the benchmark staff member.
-- Both bookings have a 60-minute duration.
+Both booking flows successfully handled the controlled contention tests:
 
-## Conclusion
+- One request successfully created a booking.
+- Nine competing requests received the expected conflict response.
+- No unexpected HTTP responses occurred.
+- The corrected explicit and automatic runs both reported zero failed HTTP requests.
 
-Both scenarios produced one successful booking and nine expected conflicts, with no unexpected application response statuses.
+These results demonstrate correct conflict enforcement for the tested scenarios. They do not establish production capacity or performance under large-scale traffic.
 
-The automatic-assignment test also recorded zero HTTP request failures under the corrected k6 response handling.
-
-The explicit-assignment test should be repeated with the corrected response handling before making a direct performance comparison.
-
-## Limitations
+## 7. Limitations
 
 - Only one benchmark staff member was available.
-- Only one date and one time slot were tested per scenario.
+- Each scenario tested one time slot.
 - Each virtual user submitted one request.
-- These results do not establish capacity limits or performance under sustained production traffic.
+- Tests ran in a local development environment.
+- Results should not be interpreted as production-scale capacity measurements.
