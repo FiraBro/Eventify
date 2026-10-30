@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/FiraBro/local-go/internal/models"
@@ -211,6 +212,13 @@ func (h *StaffHandler) GetServiceAvailability(c *gin.Context) {
 		date,
 	)
 	if err != nil {
+		slog.ErrorContext(
+			c.Request.Context(),
+			"service availability calculation failed",
+			"service_id", serviceID,
+			"error", err,
+		)
+
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to calculate service availability",
 		})

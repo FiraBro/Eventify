@@ -27,7 +27,7 @@ func (r *StaffRepository) GetAll(ctx context.Context) ([]models.Staff, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	var staffList []models.Staff
+	staffList := make([]models.Staff, 0)
 	for rows.Next() {
 		var s models.Staff
 		if err := rows.Scan(&s.ID, &s.Name, &s.Email, &s.Phone); err != nil {
@@ -100,7 +100,7 @@ func (r *StaffRepository) GetServiceIDs(ctx context.Context, staffID string) ([]
 }
 func (r *StaffRepository) GetStaffByService(ctx context.Context, serviceID string) ([]models.Staff, error) {
 	query := `
-    SELECT s.id, s.name, s.email, s.phone
+    SELECT s.id, s.name, s.email, COALESCE(s.phone, '') AS phone
     FROM staff s
     JOIN staff_services ss ON s.id = ss.staff_id
     WHERE ss.service_id = $1
@@ -120,6 +120,10 @@ func (r *StaffRepository) GetStaffByService(ctx context.Context, serviceID strin
 		}
 		staffList = append(staffList, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return staffList, nil
 }
 
