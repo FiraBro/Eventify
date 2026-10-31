@@ -2,7 +2,7 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -buildvcs=false -o ./tmp/server ./cmd/server"
+cmd = "TMPDIR=/app/tmp go build -buildvcs=false -o ./tmp/server ./cmd/server"
 bin = "./tmp/server"
 full_bin = "./tmp/server"
 

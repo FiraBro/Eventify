@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -31,6 +33,30 @@ import (
 )
 
 const apiBasePath = "/api/v1"
+
+func newPprofServer(port string) *http.Server {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+	mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
+	mux.Handle("/debug/pprof/block", pprof.Handler("block"))
+	mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+	mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+	mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
+	mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+
+	return &http.Server{
+		Addr:              ":" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+}
 
 // @title           Local-Go API Engine
 // @version         1.0
@@ -226,8 +252,32 @@ func run() error {
 	}
 
 	// 10. Start the HTTP server and monitor termination signals.
-	serverErrors := make(chan error, 1)
+	serverErrors := make(chan error, 2)
 	serverDone := make(chan struct{})
+
+	var pprofServer *http.Server
+	var pprofDone chan struct{}
+	var pprofErrors chan error
+
+	if config.AppConfig.PprofEnabled {
+		pprofServer = newPprofServer(config.AppConfig.PprofPort)
+		pprofDone = make(chan struct{})
+		pprofErrors = make(chan error, 1)
+
+		go func() {
+			defer close(pprofDone)
+
+			logger.Warn(
+				"development pprof server starting",
+				"address", pprofServer.Addr,
+			)
+
+			if err := pprofServer.ListenAndServe(); err != nil &&
+				!errors.Is(err, http.ErrServerClosed) {
+				pprofErrors <- err
+			}
+		}()
+	}
 	go func() {
 		defer close(serverDone)
 		logger.Info("HTTP server starting", "port", port, "base_path", apiBasePath)
@@ -245,15 +295,42 @@ func run() error {
 	select {
 	case <-signalCtx.Done():
 		logger.Info("shutdown signal received")
+
 	case err := <-serverErrors:
 		logger.Error("HTTP server failed", "error", err)
 		runErr = err
+
+	case err := <-pprofErrors:
+		logger.Error("pprof server failed", "error", err)
+		runErr = fmt.Errorf("pprof server: %w", err)
 	}
 
-	if shutdownErr := observability.ShutdownHTTPServer(srv, config.AppConfig.ShutdownTimeout, cancelApp, logger); shutdownErr != nil && runErr == nil {
+	// Stop the development profiling server first, if enabled.
+	if pprofServer != nil {
+		if shutdownErr := observability.ShutdownHTTPServer(
+			pprofServer,
+			config.AppConfig.ShutdownTimeout,
+			nil,
+			logger,
+		); shutdownErr != nil && runErr == nil {
+			runErr = fmt.Errorf("shutdown pprof server: %w", shutdownErr)
+		}
+
+		<-pprofDone
+	}
+
+	// Stop the main API server.
+	if shutdownErr := observability.ShutdownHTTPServer(
+		srv,
+		config.AppConfig.ShutdownTimeout,
+		cancelApp,
+		logger,
+	); shutdownErr != nil && runErr == nil {
 		runErr = shutdownErr
 	}
+
 	<-serverDone
+
 	logger.Info("application shutdown complete")
 	return runErr
 }

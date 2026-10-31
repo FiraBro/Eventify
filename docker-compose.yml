@@ -39,6 +39,7 @@ services:
     command: ["bash", "/app/docker-entrypoint.sh"]
     ports:
       - "8080:8080"
+      - "127.0.0.1:${PPROF_PORT:-6060}:${PPROF_PORT:-6060}"
     volumes:
       - .:/app
     environment:
@@ -64,6 +65,10 @@ services:
 
       # Redis cache
       REDIS_URL: "redis://redis:6379/0"
+
+      # Development-only Go profiling
+      PPROF_ENABLED: ${PPROF_ENABLED:-false}
+      PPROF_PORT: ${PPROF_PORT:-6060}
 
     depends_on:
       db:
