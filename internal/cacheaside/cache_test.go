@@ -22,6 +22,38 @@ type fakeStore struct {
 }
 
 func newFakeStore() *fakeStore { return &fakeStore{values: map[string]string{}} }
+
+type outageStore struct {
+	arrived    atomic.Int32
+	target     int32
+	allArrived chan struct{}
+	once       sync.Once
+}
+
+func newOutageStore(target int32) *outageStore {
+	return &outageStore{target: target, allArrived: make(chan struct{})}
+}
+
+func (s *outageStore) Get(ctx context.Context, _ string) (string, error) {
+	if s.arrived.Add(1) == s.target {
+		s.once.Do(func() { close(s.allArrived) })
+	}
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-s.allArrived:
+		return "", errors.New("redis unavailable")
+	}
+}
+
+func (s *outageStore) Set(context.Context, string, string, time.Duration) error {
+	return errors.New("redis unavailable")
+}
+
+func (s *outageStore) SetNX(context.Context, string, string, time.Duration) (bool, error) {
+	return false, errors.New("redis unavailable")
+}
+
 func (f *fakeStore) Get(_ context.Context, key string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -92,6 +124,78 @@ func TestLoadRedisReadFailureFallsBack(t *testing.T) {
 	got, err := Load(context.Background(), store, &singleflight.Group{}, "k", time.Minute, func(context.Context) (testValue, error) { calls.Add(1); return testValue{Value: "source"}, nil })
 	if err != nil || got.Value != "source" || calls.Load() != 1 {
 		t.Fatalf("got=%+v err=%v calls=%d", got, err, calls.Load())
+	}
+}
+
+func TestLoadRedisOutageCoalescesConcurrentFallbacks(t *testing.T) {
+	const callers = 12
+	store := newOutageStore(callers)
+	group := &singleflight.Group{}
+	start := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	var wg sync.WaitGroup
+
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			got, err := Load(context.Background(), store, group, "outage-key", time.Minute, func(context.Context) (testValue, error) {
+				calls.Add(1)
+				<-release
+				return testValue{Value: "database"}, nil
+			})
+			if err != nil || got.Value != "database" {
+				t.Errorf("got=%+v err=%v", got, err)
+			}
+		}()
+	}
+	close(start)
+	<-store.allArrived
+	time.Sleep(100 * time.Millisecond)
+	callsBeforeRelease := calls.Load()
+	close(release)
+	wg.Wait()
+
+	if callsBeforeRelease != 1 {
+		t.Fatalf("expected one shared source load during Redis outage, got %d", callsBeforeRelease)
+	}
+}
+
+func TestLoadVersionedGenerationOutageCoalescesConcurrentFallbacks(t *testing.T) {
+	const callers = 12
+	store := newOutageStore(callers)
+	group := &singleflight.Group{}
+	start := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	var wg sync.WaitGroup
+
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			got, err := LoadVersioned(context.Background(), store, group, "availability", "service-a:2026-10-31", time.Minute, func(context.Context) (testValue, error) {
+				calls.Add(1)
+				<-release
+				return testValue{Value: "database"}, nil
+			})
+			if err != nil || got.Value != "database" {
+				t.Errorf("got=%+v err=%v", got, err)
+			}
+		}()
+	}
+	close(start)
+	<-store.allArrived
+	time.Sleep(100 * time.Millisecond)
+	callsBeforeRelease := calls.Load()
+	close(release)
+	wg.Wait()
+
+	if callsBeforeRelease != 1 {
+		t.Fatalf("expected one shared source load after generation lookup outage, got %d", callsBeforeRelease)
 	}
 }
 

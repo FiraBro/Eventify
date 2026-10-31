@@ -63,7 +63,7 @@ const (
 // generation token is read before the cache lookup; fills are written only to
 // that token's key. If a mutation changes the token while a fill is in flight,
 // the old fill may finish but no subsequent reader can address its key.
-// If Redis is unavailable, the source loader is used directly.
+// If Redis is unavailable, source loading falls back to process-local singleflight.
 func LoadVersioned[T any](ctx context.Context, store Store, group *singleflight.Group, namespace, keySuffix string, ttl time.Duration, load func(context.Context) (T, error)) (T, error) {
 	var zero T
 	versioned, ok := store.(VersionedStore)
@@ -75,7 +75,9 @@ func LoadVersioned[T any](ctx context.Context, store Store, group *singleflight.
 	}
 	token, err := generationToken(ctx, versioned, namespace)
 	if err != nil {
-		return load(ctx)
+		// Redis outage: keep the source fallback coalesced per resource variant
+		// so a cache failure does not fan out into a database load storm.
+		return loadCoalesced(ctx, group, namespace+":fallback:"+keySuffix, load)
 	}
 	key := namespace + ":g:" + token + ":" + keySuffix
 	return Load(ctx, store, group, key, ttl, load)
@@ -163,7 +165,7 @@ func InvalidateNamespacesBestEffort(store Store, namespaces ...string) {
 }
 
 // Load returns a valid cached value, or invokes load on a miss. Redis and JSON
-// failures are fail-open. Cache fills are coalesced only within this process.
+// failures are fail-open. Cache fills and outage fallbacks are coalesced only within this process.
 // The shared fill uses a bounded context detached from the initiating caller so
 // one canceled waiter cannot abort work needed by other waiters. Each waiter may
 // still stop waiting immediately when its own context is canceled.
@@ -178,8 +180,9 @@ func Load[T any](ctx context.Context, store Store, group *singleflight.Group, ke
 	if value, err := read[T](ctx, store, key); err == nil {
 		return value, nil
 	} else if !errors.Is(err, redis.Nil) {
-		// Redis outage: avoid adding singleflight/cache latency to source fallback.
-		return load(ctx)
+		// Redis outage: use the same singleflight key as a cache miss. Concurrent
+		// callers therefore share one bounded source load even while Redis is down.
+		return loadCoalesced(ctx, group, key, load)
 	}
 
 	resultCh := group.DoChan(key, func() (any, error) {
@@ -196,6 +199,34 @@ func Load[T any](ctx context.Context, store Store, group *singleflight.Group, ke
 			_ = store.Set(fillCtx, key, string(encoded), ttl) // cache writes never fail the read
 		}
 		return value, nil
+	})
+	select {
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	case result := <-resultCh:
+		if result.Err != nil {
+			return zero, result.Err
+		}
+		value, ok := result.Val.(T)
+		if !ok {
+			return load(ctx)
+		}
+		return value, nil
+	}
+}
+
+// loadCoalesced shares a bounded source fallback when Redis cannot be read.
+// The initiating caller may stop waiting without canceling work needed by other
+// callers. It deliberately does not attempt a cache write while Redis is failing.
+func loadCoalesced[T any](ctx context.Context, group *singleflight.Group, key string, load func(context.Context) (T, error)) (T, error) {
+	var zero T
+	if group == nil {
+		return load(ctx)
+	}
+	resultCh := group.DoChan(key, func() (any, error) {
+		fillCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), CacheFillTimeout)
+		defer cancel()
+		return load(fillCtx)
 	})
 	select {
 	case <-ctx.Done():

@@ -30,6 +30,7 @@ Redis invalidation is best-effort and does not turn a successful database mutati
 - `git diff --check`: completed without reported errors.
 - Integration suite (`go test -tags=integration -count=1 ./tests/integration`): passed in a previous run.
 - Real Redis cross-client invalidation test: passed in a previous run with `REDIS_URL` configured.
+- Redis-outage fallback concurrency: the current C4 hardening adds process-local singleflight for source reads when the generation lookup or cache read fails; dedicated unit coverage is included in `internal/cacheaside/cache_test.go`.
 - C2 performance benchmark rerun: not yet performed; no performance improvement is claimed.
 
 Some successful test commands reused Go's test cache. Run final checks with `-count=1` before merging. Cache invalidation remains best-effort: Redis failures can leave old entries visible until their TTL expires, and already-running requests may finish using a previously resolved generation.
