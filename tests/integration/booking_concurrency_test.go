@@ -52,7 +52,7 @@ func TestConcurrentBookingRequestsForSameSlot(t *testing.T) {
 	bookingHandler := handlers.NewBookingHandler(bookingService)
 	router := gin.New()
 	router.POST("/bookings", func(c *gin.Context) {
-		c.Set("userID", userID)
+		c.Set("user_id", userID)
 		c.Next()
 	}, bookingHandler.Create)
 

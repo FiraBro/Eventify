@@ -18,10 +18,8 @@ func NewBookingHandler(service *services.BookingService) *BookingHandler {
 	return &BookingHandler{service: service}
 }
 
-// currentUser reads the authenticated user set by AuthMiddleware.
-// ADJUST the keys here if your middleware stores them differently.
 func currentUser(c *gin.Context) (userID, role string) {
-	return c.GetString("userID"), c.GetString("role")
+	return c.GetString("user_id"), c.GetString("role")
 }
 
 func bookingError(c *gin.Context, err error) {
