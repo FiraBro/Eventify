@@ -35,7 +35,7 @@ func paymentError(c *gin.Context, err error) {
 		errors.Is(err, services.ErrPaymentNotRefundable):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"success": false, "message": err.Error()})
 	case errors.Is(err, services.ErrPaymentGateway):
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": err.Error()})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Something went wrong"})
 	}

@@ -2,7 +2,7 @@
 set -eu
 
 if [ -z "${DB_ADDR:-}" ]; then
-  export DB_ADDR="postgres://local_go_user:password@db:5432/local_go_db?sslmode=disable"
+  export DB_ADDR="postgres://local_go_user:password@127.0.0.1:5433/local_go_db?sslmode=disable"
 fi
 
 if [ -x /go/bin/migrate ]; then

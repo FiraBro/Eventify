@@ -133,7 +133,7 @@ func (s *PaymentService) Checkout(ctx context.Context, userID string, req *model
 	if svc == nil {
 		return nil, ErrServiceNotFound
 	}
-	if svc.Price <= 0 {
+	if svc.Price <= 0 || math.IsNaN(svc.Price) || math.IsInf(svc.Price, 0) {
 		return nil, fmt.Errorf("%w: service has no payable price", ErrPaymentInvalidInput)
 	}
 
@@ -153,14 +153,15 @@ func (s *PaymentService) Checkout(ctx context.Context, userID string, req *model
 		}
 	}
 	if email == "" {
-		return nil, fmt.Errorf("%w: email is required", ErrPaymentInvalidInput)
+		email = "test-customer@example.com"
 	}
 
 	// 5. Create the checkout session at the provider
+	txRef := fmt.Sprintf("TX-%d-%s", time.Now().Unix(), uuid.NewString()[:12])
 	payment := &models.Payment{
 		BookingID: booking.ID,
 		UserID:    userID,
-		TxRef:     "pay-" + uuid.NewString(),
+		TxRef:     txRef,
 		Amount:    svc.Price,
 		Currency:  s.cfg.Currency,
 		Status:    paymentPending,
@@ -178,6 +179,7 @@ func (s *PaymentService) Checkout(ctx context.Context, userID string, req *model
 		ReturnURL:   s.cfg.ReturnURL,
 	})
 	if err != nil {
+		log.Printf("Chapa Raw Error Output: %v", err)
 		log.Printf("payments: initialize failed: %v", err)
 		return nil, fmt.Errorf("%w: could not start checkout", ErrPaymentGateway)
 	}

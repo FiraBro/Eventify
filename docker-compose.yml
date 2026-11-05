@@ -35,11 +35,11 @@ services:
     build:
       context: .
     container_name: local_go_api
+    env_file:
+      - .env
     restart: unless-stopped
+    network_mode: "host"
     command: ["bash", "/app/docker-entrypoint.sh"]
-    ports:
-      - "8080:8080"
-      - "127.0.0.1:${PPROF_PORT:-6060}:${PPROF_PORT:-6060}"
     volumes:
       - .:/app
     environment:
@@ -51,20 +51,20 @@ services:
       SMTP_PASS: ${SMTP_PASS}
 
       # Database connection URLs
-      DB_ADDR: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
-      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
-      DB_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable"
+      DB_ADDR: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5433/${POSTGRES_DB}?sslmode=disable"
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5433/${POSTGRES_DB}?sslmode=disable"
+      DB_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5433/${POSTGRES_DB}?sslmode=disable"
 
       # Individual database configuration
-      DB_HOST: "db"
-      POSTGRES_HOST: "db"
-      DB_PORT: "5432"
+      DB_HOST: "127.0.0.1"
+      POSTGRES_HOST: "127.0.0.1"
+      DB_PORT: "5433"
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_NAME: ${POSTGRES_DB}
 
       # Redis cache
-      REDIS_URL: "redis://redis:6379/0"
+      REDIS_URL: "redis://127.0.0.1:6379/0"
 
       # Development-only Go profiling
       PPROF_ENABLED: ${PPROF_ENABLED:-false}
