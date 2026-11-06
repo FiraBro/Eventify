@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"log"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/services"
@@ -12,6 +14,13 @@ import (
 type StaffHandler struct {
 	service             *services.StaffService
 	availabilityService *services.AvailabilityService
+}
+
+type CreateStaffRequest struct {
+	FirstName string `json:"first_name" binding:"required"`
+	LastName  string `json:"last_name" binding:"required"`
+	Email     string `json:"email" binding:"required"`
+	Phone     string `json:"phone"`
 }
 
 func NewStaffHandler(ss *services.StaffService, as *services.AvailabilityService) *StaffHandler {
@@ -33,13 +42,25 @@ func (h *StaffHandler) ListStaff(c *gin.Context) {
 }
 
 func (h *StaffHandler) Create(c *gin.Context) {
-	var s models.Staff
-	if err := c.ShouldBindJSON(&s); err != nil {
+	var req CreateStaffRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
 		return
 	}
 
+	s := models.Staff{
+		Name:  req.FirstName + " " + req.LastName,
+		Email: req.Email,
+		Phone: req.Phone,
+	}
+	if strings.TrimSpace(req.FirstName) == "" || strings.TrimSpace(req.LastName) == "" || strings.TrimSpace(req.Email) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Staff first name, last name, and email are required"})
+		return
+	}
+
+	s.Name = strings.TrimSpace(req.FirstName) + " " + strings.TrimSpace(req.LastName)
 	if err := h.service.Create(c.Request.Context(), &s); err != nil {
+		log.Printf("CRITICAL STAFF CREATION FAILURE: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
