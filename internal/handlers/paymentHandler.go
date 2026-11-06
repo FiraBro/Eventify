@@ -92,6 +92,17 @@ func (h *PaymentHandler) GetStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": status})
 }
 
+// GET /payments (admin)
+func (h *PaymentHandler) GetAll(c *gin.Context) {
+	_, role := currentUser(c)
+	payments, err := h.service.GetAll(c.Request.Context(), role)
+	if err != nil {
+		paymentError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": payments})
+}
+
 // POST /payments/refund/:bookingId  (admin)
 func (h *PaymentHandler) Refund(c *gin.Context) {
 	var req models.RefundRequest

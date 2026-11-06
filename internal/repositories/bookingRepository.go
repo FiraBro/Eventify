@@ -37,14 +37,23 @@ func mapBookingWriteError(err error) error {
 	return err
 }
 
-const bookingColumns = `id, user_id, service_id, COALESCE(staff_id::text, ''), scheduled_at, end_at, status, notes, created_at, updated_at`
+const bookingListColumns = `b.id, b.user_id, b.service_id, COALESCE(b.staff_id::text, ''), b.scheduled_at, b.end_at, b.status, b.notes, b.created_at, b.updated_at, u.id::text, u.username, u.email, s.id::text, s.name, s.email`
 
-const bookingListColumns = `b.id, b.user_id, b.service_id, COALESCE(b.staff_id::text, ''), b.scheduled_at, b.end_at, b.status, b.notes, b.created_at, b.updated_at, s.id::text, s.name, s.email`
-
-func scanBooking(scan func(dest ...any) error) (models.Booking, error) {
+func scanBookingWithRelations(scan func(dest ...any) error) (models.Booking, error) {
 	var b models.Booking
-	err := scan(&b.ID, &b.UserID, &b.ServiceID, &b.StaffID, &b.ScheduledAt, &b.EndAt, &b.Status, &b.Notes, &b.CreatedAt, &b.UpdatedAt)
-	return b, err
+	var customerID, customerName, customerEmail, staffID, staffName, staffEmail sql.NullString
+	err := scan(&b.ID, &b.UserID, &b.ServiceID, &b.StaffID, &b.ScheduledAt, &b.EndAt, &b.Status, &b.Notes, &b.CreatedAt, &b.UpdatedAt,
+		&customerID, &customerName, &customerEmail, &staffID, &staffName, &staffEmail)
+	if err != nil {
+		return b, err
+	}
+	if customerID.Valid {
+		b.Customer = &models.CustomerProfile{ID: customerID.String, Name: customerName.String, Email: customerEmail.String}
+	}
+	if staffID.Valid {
+		b.Staff = &models.BookingStaff{ID: staffID.String, Name: staffName.String, Email: staffEmail.String}
+	}
+	return b, nil
 }
 
 func (r *BookingRepository) queryList(ctx context.Context, query string, args ...any) ([]models.Booking, error) {
@@ -58,14 +67,9 @@ func (r *BookingRepository) queryList(ctx context.Context, query string, args ..
 
 	bookings := []models.Booking{}
 	for rows.Next() {
-		var b models.Booking
-		var staffID, staffName, staffEmail sql.NullString
-		err := rows.Scan(&b.ID, &b.UserID, &b.ServiceID, &b.StaffID, &b.ScheduledAt, &b.EndAt, &b.Status, &b.Notes, &b.CreatedAt, &b.UpdatedAt, &staffID, &staffName, &staffEmail)
+		b, err := scanBookingWithRelations(rows.Scan)
 		if err != nil {
 			return nil, err
-		}
-		if staffID.Valid {
-			b.Staff = &models.BookingStaff{ID: staffID.String, Name: staffName.String, Email: staffEmail.String}
 		}
 		bookings = append(bookings, b)
 	}
@@ -96,10 +100,10 @@ func (r *BookingRepository) Create(ctx context.Context, b *models.Booking) error
 func (r *BookingRepository) GetAll(ctx context.Context, status string) ([]models.Booking, error) {
 	if status != "" {
 		return r.queryList(ctx,
-			`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN staff s ON b.staff_id = s.id WHERE b.status = $1 ORDER BY b.created_at DESC`, status)
+			`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN users u ON b.user_id = u.id LEFT JOIN LATERAL (SELECT st.id, st.name, st.email FROM staff st WHERE st.id = b.staff_id OR (NOT EXISTS (SELECT 1 FROM staff assigned WHERE assigned.id = b.staff_id) AND EXISTS (SELECT 1 FROM staff_services ss WHERE ss.staff_id = st.id AND ss.service_id = b.service_id)) ORDER BY CASE WHEN st.id = b.staff_id THEN 0 ELSE 1 END, st.id LIMIT 1) s ON TRUE WHERE b.status = $1 ORDER BY b.created_at DESC`, status)
 	}
 	return r.queryList(ctx,
-		`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN staff s ON b.staff_id = s.id ORDER BY b.created_at DESC`)
+		`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN users u ON b.user_id = u.id LEFT JOIN LATERAL (SELECT st.id, st.name, st.email FROM staff st WHERE st.id = b.staff_id OR (NOT EXISTS (SELECT 1 FROM staff assigned WHERE assigned.id = b.staff_id) AND EXISTS (SELECT 1 FROM staff_services ss WHERE ss.staff_id = st.id AND ss.service_id = b.service_id)) ORDER BY CASE WHEN st.id = b.staff_id THEN 0 ELSE 1 END, st.id LIMIT 1) s ON TRUE ORDER BY b.created_at DESC`)
 }
 
 // --------------------
@@ -107,16 +111,15 @@ func (r *BookingRepository) GetAll(ctx context.Context, status string) ([]models
 // --------------------
 func (r *BookingRepository) GetByUserID(ctx context.Context, userID string) ([]models.Booking, error) {
 	return r.queryList(ctx,
-		`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN staff s ON b.staff_id = s.id WHERE b.user_id = $1 ORDER BY b.created_at DESC`, userID)
+		`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN users u ON b.user_id = u.id LEFT JOIN LATERAL (SELECT st.id, st.name, st.email FROM staff st WHERE st.id = b.staff_id OR (NOT EXISTS (SELECT 1 FROM staff assigned WHERE assigned.id = b.staff_id) AND EXISTS (SELECT 1 FROM staff_services ss WHERE ss.staff_id = st.id AND ss.service_id = b.service_id)) ORDER BY CASE WHEN st.id = b.staff_id THEN 0 ELSE 1 END, st.id LIMIT 1) s ON TRUE WHERE b.user_id = $1 ORDER BY b.created_at DESC`, userID)
 }
 
 // --------------------
 // GET BOOKING BY ID
 // --------------------
 func (r *BookingRepository) GetByID(ctx context.Context, id string) (*models.Booking, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+bookingColumns+` FROM bookings WHERE id = $1`, id)
-
-	b, err := scanBooking(row.Scan)
+	row := r.db.QueryRowContext(ctx, `SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN users u ON b.user_id = u.id LEFT JOIN LATERAL (SELECT st.id, st.name, st.email FROM staff st WHERE st.id = b.staff_id OR (NOT EXISTS (SELECT 1 FROM staff assigned WHERE assigned.id = b.staff_id) AND EXISTS (SELECT 1 FROM staff_services ss WHERE ss.staff_id = st.id AND ss.service_id = b.service_id)) ORDER BY CASE WHEN st.id = b.staff_id THEN 0 ELSE 1 END, st.id LIMIT 1) s ON TRUE WHERE b.id = $1`, id)
+	b, err := scanBookingWithRelations(row.Scan)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil // not found

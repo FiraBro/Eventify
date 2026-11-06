@@ -20,5 +20,6 @@ func PaymentRoutes(api *gin.RouterGroup, handler *handlers.PaymentHandler, userR
 	api.GET("/payments/:bookingId/status", authMW, handler.GetStatus)
 
 	// Admin-only routes
+	api.GET("/payments", authMW, adminMW, handler.GetAll)
 	api.POST("/payments/refund/:bookingId", authMW, adminMW, handler.Refund)
 }

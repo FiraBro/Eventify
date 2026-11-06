@@ -3,21 +3,23 @@ package models
 import "time"
 
 type Payment struct {
-	ID              string     `json:"id"`
-	BookingID       string     `json:"booking_id"`
-	UserID          string     `json:"user_id"`
-	TxRef           string     `json:"tx_ref"`
-	ChapaReference  string     `json:"chapa_reference,omitempty"`
-	Amount          float64    `json:"amount"`
-	Currency        string     `json:"currency"`
-	Status          string     `json:"status"`
-	CheckoutURL     string     `json:"checkout_url,omitempty"`
-	RefundReference string     `json:"refund_reference,omitempty"`
-	RefundReason    string     `json:"refund_reason,omitempty"`
-	PaidAt          *time.Time `json:"paid_at,omitempty"`
-	RefundedAt      *time.Time `json:"refunded_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID              string           `json:"id"`
+	BookingID       string           `json:"booking_id"`
+	UserID          string           `json:"user_id"`
+	Customer        *CustomerProfile `json:"customer"`
+	Staff           *BookingStaff    `json:"staff"`
+	TxRef           string           `json:"tx_ref"`
+	ChapaReference  string           `json:"chapa_reference,omitempty"`
+	Amount          float64          `json:"amount"`
+	Currency        string           `json:"currency"`
+	Status          string           `json:"status"`
+	CheckoutURL     string           `json:"checkout_url,omitempty"`
+	RefundReference string           `json:"refund_reference,omitempty"`
+	RefundReason    string           `json:"refund_reason,omitempty"`
+	PaidAt          *time.Time       `json:"paid_at,omitempty"`
+	RefundedAt      *time.Time       `json:"refunded_at,omitempty"`
+	CreatedAt       time.Time        `json:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at"`
 }
 
 // POST /payments/checkout

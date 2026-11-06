@@ -90,6 +90,51 @@ func (r *PaymentRepository) GetByTxRef(ctx context.Context, txRef string) (*mode
 	return scanPayment(row.Scan)
 }
 
+// GetAll returns payments with their customer and the assigned or service-qualified staff member.
+func (r *PaymentRepository) GetAll(ctx context.Context) ([]models.Payment, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT p.id, p.booking_id, p.user_id, p.tx_ref, p.chapa_reference, p.amount, p.currency, p.status,
+		       p.checkout_url, p.refund_reference, p.refund_reason, p.paid_at, p.refunded_at, p.created_at, p.updated_at,
+		       u.id::text, u.username, u.email, st.id::text, st.name, st.email
+		FROM payments p
+		LEFT JOIN users u ON u.id = p.user_id
+		LEFT JOIN bookings b ON b.id = p.booking_id
+		LEFT JOIN LATERAL (
+			SELECT s.id, s.name, s.email
+			FROM staff s
+			WHERE s.id = b.staff_id OR (NOT EXISTS (SELECT 1 FROM staff assigned WHERE assigned.id = b.staff_id) AND EXISTS (
+				SELECT 1 FROM staff_services ss WHERE ss.staff_id = s.id AND ss.service_id = b.service_id
+			))
+			ORDER BY CASE WHEN s.id = b.staff_id THEN 0 ELSE 1 END, s.id
+			LIMIT 1
+		) st ON TRUE
+		ORDER BY p.created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	payments := []models.Payment{}
+	for rows.Next() {
+		var p models.Payment
+		var customerID, customerName, customerEmail, staffID, staffName, staffEmail sql.NullString
+		if err := rows.Scan(&p.ID, &p.BookingID, &p.UserID, &p.TxRef, &p.ChapaReference, &p.Amount, &p.Currency, &p.Status,
+			&p.CheckoutURL, &p.RefundReference, &p.RefundReason, &p.PaidAt, &p.RefundedAt, &p.CreatedAt, &p.UpdatedAt,
+			&customerID, &customerName, &customerEmail, &staffID, &staffName, &staffEmail); err != nil {
+			return nil, err
+		}
+		if customerID.Valid {
+			p.Customer = &models.CustomerProfile{ID: customerID.String, Name: customerName.String, Email: customerEmail.String}
+		}
+		if staffID.Valid {
+			p.Staff = &models.BookingStaff{ID: staffID.String, Name: staffName.String, Email: staffEmail.String}
+		}
+		payments = append(payments, p)
+	}
+	return payments, rows.Err()
+}
+
 // The methods below are compare-and-set transitions: they return false when the row
 // was not in the expected state, which makes webhooks and refunds safe to repeat.
 

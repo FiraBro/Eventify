@@ -292,6 +292,13 @@ func (s *PaymentService) GetStatus(ctx context.Context, bookingID, userID, role 
 	}, nil
 }
 
+func (s *PaymentService) GetAll(ctx context.Context, role string) ([]models.Payment, error) {
+	if role != roleAdmin {
+		return nil, ErrBookingForbidden
+	}
+	return s.repo.GetAll(ctx)
+}
+
 // --------------------
 // REFUND (admin only, full refund)
 // --------------------

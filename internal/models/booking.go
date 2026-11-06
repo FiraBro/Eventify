@@ -11,20 +11,27 @@ type CreateBookingRequest struct {
 }
 
 type Booking struct {
-	ID          string        `json:"id"`
-	UserID      string        `json:"user_id"`
-	ServiceID   string        `json:"service_id"`
-	StaffID     string        `json:"staff_id"`
-	Staff       *BookingStaff `json:"staff"`
-	ScheduledAt time.Time     `json:"scheduled_at"`
-	EndAt       time.Time     `json:"end_at"` // computed by the server, never read from the client
-	Status      string        `json:"status"`
-	Notes       string        `json:"notes"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	ID          string           `json:"id"`
+	UserID      string           `json:"user_id"`
+	Customer    *CustomerProfile `json:"customer"`
+	ServiceID   string           `json:"service_id"`
+	StaffID     string           `json:"staff_id"`
+	Staff       *BookingStaff    `json:"staff"`
+	ScheduledAt time.Time        `json:"scheduled_at"`
+	EndAt       time.Time        `json:"end_at"` // computed by the server, never read from the client
+	Status      string           `json:"status"`
+	Notes       string           `json:"notes"`
+	CreatedAt   time.Time        `json:"created_at"`
+	UpdatedAt   time.Time        `json:"updated_at"`
 }
 
 type BookingStaff struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type CustomerProfile struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
