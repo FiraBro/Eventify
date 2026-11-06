@@ -14,6 +14,7 @@ func ReportRoutes(api *gin.RouterGroup, handler *handlers.ReportHandler, userRep
 
 	reports := api.Group("/reports", authMW, adminMW)
 	{
+		reports.GET("/dashboard", handler.Dashboard)
 		reports.GET("/bookings", handler.Bookings)
 		reports.GET("/revenue", handler.Revenue)
 		reports.GET("/services", handler.Services)

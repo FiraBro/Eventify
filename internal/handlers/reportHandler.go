@@ -33,6 +33,17 @@ func limitParam(c *gin.Context) int {
 	return n // the service applies default and max
 }
 
+// GET /reports/dashboard
+func (h *ReportHandler) Dashboard(c *gin.Context) {
+	_, role := currentUser(c)
+	report, err := h.service.Dashboard(c.Request.Context(), role)
+	if err != nil {
+		reportError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": report})
+}
+
 // GET /reports/bookings?from=2026-10-01&to=2026-10-31
 func (h *ReportHandler) Bookings(c *gin.Context) {
 	_, role := currentUser(c)

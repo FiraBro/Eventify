@@ -31,6 +31,13 @@ func NewReportService(repo *repositories.ReportRepository) *ReportService {
 	return &ReportService{repo: repo}
 }
 
+func (s *ReportService) Dashboard(ctx context.Context, role string) (*models.DashboardReport, error) {
+	if err := requireAdmin(role); err != nil {
+		return nil, err
+	}
+	return s.repo.DashboardSummary(ctx)
+}
+
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
 
 func percent(part, whole int) float64 {

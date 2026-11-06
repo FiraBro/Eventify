@@ -107,3 +107,17 @@ type CustomersReport struct {
 	RepeatCustomers int                 `json:"repeat_customers"` // 2+ bookings in the period
 	Customers       []CustomerReportRow `json:"customers"`
 }
+
+// DashboardReport contains the live aggregate metrics used by the admin cards.
+type DashboardReport struct {
+	TotalRevenue      float64          `json:"total_revenue"`
+	TotalBookings     int              `json:"total_bookings"`
+	CancellationCount int              `json:"cancellation_count"`
+	ActiveCustomers   int              `json:"active_customers"`
+	TopStaff          []TopStaffReport `json:"top_staff"`
+}
+
+type TopStaffReport struct {
+	StaffID      string `json:"staff_id"`
+	BookingCount int    `json:"booking_count"`
+}

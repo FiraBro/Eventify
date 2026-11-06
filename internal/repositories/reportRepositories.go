@@ -17,6 +17,51 @@ func NewReportRepository(db *sql.DB) *ReportRepository {
 	return &ReportRepository{db: db}
 }
 
+// DashboardSummary returns all-time aggregates for the admin dashboard.
+func (r *ReportRepository) DashboardSummary(ctx context.Context) (*models.DashboardReport, error) {
+	var report models.DashboardReport
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM payments
+		WHERE status IN ('completed', 'paid')
+	`).Scan(&report.TotalRevenue); err != nil {
+		return nil, err
+	}
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(id) FROM bookings`).Scan(&report.TotalBookings); err != nil {
+		return nil, err
+	}
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(id) FROM bookings WHERE status = 'cancelled'`).Scan(&report.CancellationCount); err != nil {
+		return nil, err
+	}
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT user_id) FROM bookings WHERE status != 'cancelled'`).Scan(&report.ActiveCustomers); err != nil {
+		return nil, err
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT staff_id::text, COUNT(id) AS booking_count
+		FROM bookings
+		WHERE staff_id IS NOT NULL AND (status = 'confirmed' OR status = 'completed')
+		GROUP BY staff_id
+		ORDER BY booking_count DESC
+		LIMIT 5
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	report.TopStaff = []models.TopStaffReport{}
+	for rows.Next() {
+		var staff models.TopStaffReport
+		if err := rows.Scan(&staff.StaffID, &staff.BookingCount); err != nil {
+			return nil, err
+		}
+		report.TopStaff = append(report.TopStaff, staff)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &report, nil
+}
+
 // --------------------
 // BOOKINGS: count per status
 // --------------------
