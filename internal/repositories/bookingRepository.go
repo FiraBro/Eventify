@@ -39,6 +39,8 @@ func mapBookingWriteError(err error) error {
 
 const bookingColumns = `id, user_id, service_id, COALESCE(staff_id::text, ''), scheduled_at, end_at, status, notes, created_at, updated_at`
 
+const bookingListColumns = `b.id, b.user_id, b.service_id, COALESCE(b.staff_id::text, ''), b.scheduled_at, b.end_at, b.status, b.notes, b.created_at, b.updated_at, s.id::text, s.name, s.email`
+
 func scanBooking(scan func(dest ...any) error) (models.Booking, error) {
 	var b models.Booking
 	err := scan(&b.ID, &b.UserID, &b.ServiceID, &b.StaffID, &b.ScheduledAt, &b.EndAt, &b.Status, &b.Notes, &b.CreatedAt, &b.UpdatedAt)
@@ -56,9 +58,14 @@ func (r *BookingRepository) queryList(ctx context.Context, query string, args ..
 
 	bookings := []models.Booking{}
 	for rows.Next() {
-		b, err := scanBooking(rows.Scan)
+		var b models.Booking
+		var staffID, staffName, staffEmail sql.NullString
+		err := rows.Scan(&b.ID, &b.UserID, &b.ServiceID, &b.StaffID, &b.ScheduledAt, &b.EndAt, &b.Status, &b.Notes, &b.CreatedAt, &b.UpdatedAt, &staffID, &staffName, &staffEmail)
 		if err != nil {
 			return nil, err
+		}
+		if staffID.Valid {
+			b.Staff = &models.BookingStaff{ID: staffID.String, Name: staffName.String, Email: staffEmail.String}
 		}
 		bookings = append(bookings, b)
 	}
@@ -89,10 +96,10 @@ func (r *BookingRepository) Create(ctx context.Context, b *models.Booking) error
 func (r *BookingRepository) GetAll(ctx context.Context, status string) ([]models.Booking, error) {
 	if status != "" {
 		return r.queryList(ctx,
-			`SELECT `+bookingColumns+` FROM bookings WHERE status = $1 ORDER BY created_at DESC`, status)
+			`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN staff s ON b.staff_id = s.id WHERE b.status = $1 ORDER BY b.created_at DESC`, status)
 	}
 	return r.queryList(ctx,
-		`SELECT `+bookingColumns+` FROM bookings ORDER BY created_at DESC`)
+		`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN staff s ON b.staff_id = s.id ORDER BY b.created_at DESC`)
 }
 
 // --------------------
@@ -100,7 +107,7 @@ func (r *BookingRepository) GetAll(ctx context.Context, status string) ([]models
 // --------------------
 func (r *BookingRepository) GetByUserID(ctx context.Context, userID string) ([]models.Booking, error) {
 	return r.queryList(ctx,
-		`SELECT `+bookingColumns+` FROM bookings WHERE user_id = $1 ORDER BY created_at DESC`, userID)
+		`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN staff s ON b.staff_id = s.id WHERE b.user_id = $1 ORDER BY b.created_at DESC`, userID)
 }
 
 // --------------------

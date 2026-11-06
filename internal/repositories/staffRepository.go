@@ -25,15 +25,42 @@ func (r *StaffRepository) GetAll(ctx context.Context) ([]models.Staff, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
-
 	staffList := make([]models.Staff, 0)
+	staffIndexes := make(map[string]int)
 	for rows.Next() {
 		var s models.Staff
 		if err := rows.Scan(&s.ID, &s.Name, &s.Email, &s.Phone); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
+		s.Services = make([]string, 0)
+		staffIndexes[s.ID] = len(staffList)
 		staffList = append(staffList, s)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	serviceRows, err := r.db.QueryContext(ctx, `SELECT staff_id, service_id FROM staff_services`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = serviceRows.Close() }()
+	for serviceRows.Next() {
+		var staffID, serviceID string
+		if err := serviceRows.Scan(&staffID, &serviceID); err != nil {
+			return nil, err
+		}
+		if idx, ok := staffIndexes[staffID]; ok {
+			staffList[idx].Services = append(staffList[idx].Services, serviceID)
+		}
+	}
+	if err := serviceRows.Err(); err != nil {
+		return nil, err
 	}
 	return staffList, nil
 }
