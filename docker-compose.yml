@@ -23,6 +23,8 @@ services:
     container_name: local_go_redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -32,6 +34,7 @@ services:
       - redis_data:/data
 
   api:
+    image: local_go_api
     build:
       context: .
     container_name: local_go_api
@@ -64,7 +67,7 @@ services:
       DB_NAME: ${POSTGRES_DB}
 
       # Redis cache
-      REDIS_URL: "redis://127.0.0.1:6379/0"
+      REDIS_URL: "redis://127.0.0.1:6380/0"
 
       # Development-only Go profiling
       PPROF_ENABLED: ${PPROF_ENABLED:-false}
@@ -73,8 +76,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # redis:
-      #   condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   db_data:

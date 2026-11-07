@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -12,6 +13,11 @@ import (
 
 type AuthHandler struct {
 	authService *services.AuthService
+}
+
+type CompleteInvitationRequest struct {
+	Token    string `json:"token" binding:"required"`
+	Password string `json:"password" binding:"required"`
 }
 
 func NewAuthHandler(authService *services.AuthService) *AuthHandler {
@@ -625,4 +631,26 @@ func (h *AuthHandler) UpdateUserHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
+}
+func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
+	var req CompleteInvitationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token and password are required"})
+		return
+	}
+
+	err := h.authService.CompleteInvitationOnboarding(c.Request.Context(), req.Token, req.Password)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidInvitation) || errors.Is(err, services.ErrInvitationExpired) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not complete onboarding"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "invitation completed successfully",
+	})
 }

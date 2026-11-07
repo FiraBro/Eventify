@@ -4,10 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/google/uuid"
 )
+
+type StaffInvitation struct {
+	ID        uuid.UUID
+	ExpiresAt time.Time
+}
+
+var ErrInvalidInvitation = errors.New("invalid or expired invitation")
 
 type StaffRepository struct {
 	db *sql.DB
@@ -264,4 +272,46 @@ func (r *StaffRepository) GetAvailabilityData(ctx context.Context, staffID strin
 	}
 
 	return schedule, holidays, nil
+}
+
+// ------------------- INVITATIONS -------------------
+
+func (r *StaffRepository) GetPendingInvitationByToken(ctx context.Context, token string) (*StaffInvitation, error) {
+	query := `
+		SELECT id, invitation_expires_at
+		FROM staff
+		WHERE invitation_token = $1 AND status = 'PENDING_INVITATION'
+	`
+	var invite StaffInvitation
+	err := r.db.QueryRowContext(ctx, query, token).Scan(&invite.ID, &invite.ExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	return &invite, nil
+}
+
+func (r *StaffRepository) ActivateStaffPassword(ctx context.Context, id uuid.UUID, token string, passwordHash string) error {
+	query := `
+		UPDATE staff
+		SET password_hash = $1,
+		    status = 'ACTIVE',
+		    invitation_token = NULL,
+		    invitation_expires_at = NULL
+		WHERE id = $2
+		  AND invitation_token = $3
+		  AND status = 'PENDING_INVITATION'
+		  AND invitation_expires_at > NOW()
+	`
+	result, err := r.db.ExecContext(ctx, query, passwordHash, id, token)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected != 1 {
+		return ErrInvalidInvitation
+	}
+	return nil
 }

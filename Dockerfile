@@ -3,8 +3,12 @@
 # build fails if the image is older than go.mod requires. Bump this tag whenever the toolchain is bumped.
 FROM golang:1.26.9-alpine
 
-# Install required tools
-RUN apk add --no-cache bash git make
+# Install required tools (with retries for transient DNS/network glitches)
+RUN for i in 1 2 3 4 5; do \
+      apk add --no-cache bash git make && exit 0; \
+      echo "apk add failed (attempt $i), retrying in 3s..."; \
+      sleep 3; \
+    done; exit 1
 
 # Install Air with a Go version compatible release
 RUN go install github.com/air-verse/air@v1.61.1

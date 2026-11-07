@@ -1,8 +1,10 @@
 package services
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"log"
@@ -23,18 +25,24 @@ type AuthService struct {
 	userRepo       *repositories.UserRepository
 	refreshRepo    *repositories.RefreshTokenRepository
 	resetTokenRepo *repositories.ResetTokenRepository
+	staffRepo      *repositories.StaffRepository
 }
 
 func NewAuthService(
 	userRepo *repositories.UserRepository,
 	refreshRepo *repositories.RefreshTokenRepository,
 	resetTokenRepo *repositories.ResetTokenRepository,
+	staffRepo ...*repositories.StaffRepository,
 ) *AuthService {
-	return &AuthService{
+	s := &AuthService{
 		userRepo:       userRepo,
 		refreshRepo:    refreshRepo,
 		resetTokenRepo: resetTokenRepo,
 	}
+	if len(staffRepo) > 0 {
+		s.staffRepo = staffRepo[0]
+	}
+	return s
 }
 
 func GenerateSecureToken() string {
@@ -428,4 +436,44 @@ func (s *AuthService) UpdateUser(user *models.User) error {
 	}
 
 	return s.userRepo.UpdateUser(user.ID, user)
+}
+
+var (
+	ErrInvalidInvitation = errors.New("invalid invitation token")
+	ErrInvitationExpired = errors.New("invitation link has expired")
+)
+
+// CompleteInvitationOnboarding orchestrates the logic check verification flow
+func (s *AuthService) CompleteInvitationOnboarding(ctx context.Context, token, plainPassword string) error {
+	if s.staffRepo == nil {
+		return errors.New("staff repository is not configured")
+	}
+
+	// 1. Retrieve the structural invitation details from repository layer
+	invite, err := s.staffRepo.GetPendingInvitationByToken(ctx, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrInvalidInvitation
+	} else if err != nil {
+		return err
+	}
+
+	// 2. Perform business clock expiry rule checking checks
+	if !invite.ExpiresAt.After(time.Now()) {
+		return ErrInvitationExpired
+	}
+
+	// 3. Transform plain password text into safe crypto hashed format
+	hash, err := bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	// 4. Fire persistence update commands to finalize record states
+	if err := s.staffRepo.ActivateStaffPassword(ctx, invite.ID, token, string(hash)); err != nil {
+		if errors.Is(err, repositories.ErrInvalidInvitation) {
+			return ErrInvalidInvitation
+		}
+		return err
+	}
+	return nil
 }
