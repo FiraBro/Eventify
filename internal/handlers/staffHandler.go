@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
@@ -19,7 +20,7 @@ type StaffHandler struct {
 type CreateStaffRequest struct {
 	FirstName string `json:"first_name" binding:"required"`
 	LastName  string `json:"last_name" binding:"required"`
-	Email     string `json:"email" binding:"required"`
+	Email     string `json:"email" binding:"required,email"`
 	Phone     string `json:"phone"`
 }
 
@@ -60,11 +61,23 @@ func (h *StaffHandler) Create(c *gin.Context) {
 
 	s.Name = strings.TrimSpace(req.FirstName) + " " + strings.TrimSpace(req.LastName)
 	if err := h.service.Create(c.Request.Context(), &s); err != nil {
+		if errors.Is(err, services.ErrStaffAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "A staff account with this email already exists"})
+			return
+		}
+		if errors.Is(err, services.ErrInvitationEmailDelivery) {
+			c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "Staff account was created, but the invitation email could not be sent. Please retry the invitation."})
+			return
+		}
 		log.Printf("CRITICAL STAFF CREATION FAILURE: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create staff account"})
 		return
 	}
-	c.JSON(http.StatusCreated, s)
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"message": "Staff account created and invitation email sent",
+		"data":    s,
+	})
 }
 
 func (h *StaffHandler) GetStaffDetails(c *gin.Context) {

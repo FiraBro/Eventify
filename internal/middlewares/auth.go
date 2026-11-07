@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/FiraBro/local-go/internal/config"
+	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
@@ -54,7 +55,7 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 
 		// Fetch user from DB to validate soft deletion
 		user, err := userRepo.GetActiveByID(claims.UserID)
-		if err != nil || user.DeletedAt != nil {
+		if err != nil || user.DeletedAt != nil || user.AccountStatus != models.AccountStatusActive {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User no longer active"})
 			return
 		}

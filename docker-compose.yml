@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,11 +22,11 @@ services:
     image: redis:7-alpine
     container_name: local_go_redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: [ "redis-server", "--appendonly", "yes" ]
     ports:
       - "6380:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -38,11 +38,13 @@ services:
     build:
       context: .
     container_name: local_go_api
+    dns:
+      - 10.235.5.25
     env_file:
       - .env
     restart: unless-stopped
     network_mode: "host"
-    command: ["bash", "/app/docker-entrypoint.sh"]
+    command: [ "bash", "/app/docker-entrypoint.sh" ]
     volumes:
       - .:/app
     environment:

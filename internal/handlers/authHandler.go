@@ -12,16 +12,21 @@ import (
 )
 
 type AuthHandler struct {
-	authService *services.AuthService
+	authService  *services.AuthService
+	staffService *services.StaffService
 }
 
 type CompleteInvitationRequest struct {
 	Token    string `json:"token" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Password string `json:"password" binding:"required,min=6"`
 }
 
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(authService *services.AuthService, staffServices ...*services.StaffService) *AuthHandler {
+	handler := &AuthHandler{authService: authService}
+	if len(staffServices) > 0 {
+		handler.staffService = staffServices[0]
+	}
+	return handler
 }
 
 // ----------------------------
@@ -230,7 +235,14 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	_ = h.authService.ForgotPassword(body.Email)
+	if err := h.authService.ForgotPassword(body.Email); err != nil {
+		log.Println("❌ Password reset email delivery failed:", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"success": false,
+			"message": "Unable to send a password reset code right now",
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -633,24 +645,60 @@ func (h *AuthHandler) UpdateUserHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
 }
 func (h *AuthHandler) CompleteInvitation(c *gin.Context) {
+	h.AcceptInvitation(c)
+}
+
+func (h *AuthHandler) AcceptInvitation(c *gin.Context) {
 	var req CompleteInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "token and password are required"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "A valid invitation token and password are required",
+		})
 		return
 	}
 
 	err := h.authService.CompleteInvitationOnboarding(c.Request.Context(), req.Token, req.Password)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidInvitation) || errors.Is(err, services.ErrInvitationExpired) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if errors.Is(err, services.ErrInvalidInvitation) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "This invitation is invalid or has expired.",
+			})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not complete onboarding"})
+		if errors.Is(err, services.ErrWeakPassword) || errors.Is(err, services.ErrPasswordTooLong) {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Could not complete account activation"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
-		"message": "invitation completed successfully",
+		"success": true,
+		"message": "Your account has been activated successfully.",
+	})
+}
+
+func (h *AuthHandler) ResendInvitation(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "A valid email address is required"})
+		return
+	}
+	if h.staffService == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Invitation request could not be processed"})
+		return
+	}
+	if err := h.staffService.ResendInvitation(c.Request.Context(), req.Email); err != nil && !errors.Is(err, services.ErrInvitationEmailDelivery) {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Invitation request could not be processed"})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{
+		"success": true,
+		"message": "Request received. If an invitation is appropriate, the request has been processed.",
 	})
 }

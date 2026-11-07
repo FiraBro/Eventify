@@ -4,18 +4,24 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
-type StaffInvitation struct {
-	ID        uuid.UUID
-	ExpiresAt time.Time
-}
-
 var ErrInvalidInvitation = errors.New("invalid or expired invitation")
+var ErrStaffEmailAlreadyExists = errors.New("staff email already exists")
+
+type PendingStaffInvitation struct {
+	ID      string
+	StaffID string
+	UserID  string
+	Name    string
+	Email   string
+}
 
 type StaffRepository struct {
 	db *sql.DB
@@ -83,6 +89,68 @@ func (r *StaffRepository) Create(ctx context.Context, staff *models.Staff) error
     VALUES ($1, $2, $3, $4)
 `
 	_, err := r.db.ExecContext(ctx, query, staff.ID, staff.Name, staff.Email, staff.Phone)
+	return err
+}
+
+// CreateInvitedStaff creates the staff resource, its pending auth identity,
+// and the first invitation hash in one transaction. The raw invitation token
+// is never accepted by or stored in this repository method.
+func (r *StaffRepository) CreateInvitedStaff(ctx context.Context, staff *models.Staff, tokenHash string, expiresAt time.Time) error {
+	staff.Email = strings.ToLower(strings.TrimSpace(staff.Email))
+	if staff.ID == "" {
+		staff.ID = uuid.NewString()
+	}
+	userID := uuid.NewString()
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollbackTx(tx)
+
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM users WHERE LOWER(email) = $1
+			UNION ALL
+			SELECT 1 FROM staff WHERE LOWER(email) = $1
+		)
+	`, staff.Email).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return ErrStaffEmailAlreadyExists
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO users (id, username, email, password, role, deleted_at, delete_deadline, account_status)
+		VALUES ($1, $2, $3, '', 'staff', NULL, NULL, 'PENDING_INVITATION')
+	`, userID, staff.Name, staff.Email); err != nil {
+		return mapStaffUniqueViolation(err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO staff (id, name, email, phone, user_id)
+		VALUES ($1, $2, $3, $4, $5)
+	`, staff.ID, staff.Name, staff.Email, staff.Phone, userID); err != nil {
+		return mapStaffUniqueViolation(err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO staff_invitations (id, staff_id, token_hash, expires_at)
+		VALUES ($1, $2, $3, $4)
+	`, uuid.NewString(), staff.ID, tokenHash, expiresAt); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func mapStaffUniqueViolation(err error) error {
+	var postgresError *pq.Error
+	if errors.As(err, &postgresError) && postgresError.Code == "23505" {
+		return ErrStaffEmailAlreadyExists
+	}
 	return err
 }
 
@@ -245,6 +313,118 @@ func (r *StaffRepository) AddHoliday(ctx context.Context, staffID, date, reason 
 	return err
 }
 
+// ReplaceInvitation atomically revokes any outstanding invitations for the
+// staff member and inserts a new invitation record. Callers must pass only a
+// cryptographic token digest, never the raw token.
+func (r *StaffRepository) ReplaceInvitation(ctx context.Context, staffID, tokenHash string, expiresAt time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollbackTx(tx)
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE staff_invitations
+		SET revoked_at = NOW()
+		WHERE staff_id = $1 AND consumed_at IS NULL AND revoked_at IS NULL
+	`, staffID); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO staff_invitations (id, staff_id, token_hash, expires_at)
+		VALUES ($1, $2, $3, $4)
+	`, uuid.NewString(), staffID, tokenHash, expiresAt); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// ReplacePendingInvitationByEmail rotates an invitation only for a pending
+// staff identity. The caller receives delivery details only when an eligible
+// record exists; HTTP handlers must keep that distinction private.
+func (r *StaffRepository) ReplacePendingInvitationByEmail(ctx context.Context, email, tokenHash string, expiresAt time.Time) (*PendingStaffInvitation, bool, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rollbackTx(tx)
+
+	invitation := &PendingStaffInvitation{}
+	err = tx.QueryRowContext(ctx, `
+		SELECT staff.id, users.id, staff.name, staff.email
+		FROM staff
+		JOIN users ON users.id = staff.user_id
+		WHERE LOWER(staff.email) = $1
+		  AND users.account_status = 'PENDING_INVITATION'
+	`, strings.ToLower(strings.TrimSpace(email))).Scan(
+		&invitation.StaffID,
+		&invitation.UserID,
+		&invitation.Name,
+		&invitation.Email,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Lock invitation rows before the user row, matching acceptance lock order.
+	openInvitations, err := tx.QueryContext(ctx, `
+		SELECT id FROM staff_invitations
+		WHERE staff_id = $1 AND consumed_at IS NULL AND revoked_at IS NULL
+		ORDER BY id FOR UPDATE
+	`, invitation.StaffID)
+	if err != nil {
+		return nil, false, err
+	}
+	for openInvitations.Next() {
+		var id string
+		if err := openInvitations.Scan(&id); err != nil {
+			_ = openInvitations.Close()
+			return nil, false, err
+		}
+	}
+	if err := openInvitations.Err(); err != nil {
+		_ = openInvitations.Close()
+		return nil, false, err
+	}
+	if err := openInvitations.Close(); err != nil {
+		return nil, false, err
+	}
+
+	var status string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT account_status FROM users WHERE id = $1 FOR UPDATE
+	`, invitation.UserID).Scan(&status); err != nil {
+		return nil, false, err
+	}
+	if status != "PENDING_INVITATION" {
+		return nil, false, nil
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE staff_invitations
+		SET revoked_at = NOW()
+		WHERE staff_id = $1 AND consumed_at IS NULL AND revoked_at IS NULL
+	`, invitation.StaffID); err != nil {
+		return nil, false, err
+	}
+	invitation.ID = uuid.NewString()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO staff_invitations (id, staff_id, token_hash, expires_at)
+		VALUES ($1, $2, $3, $4)
+	`, invitation.ID, invitation.StaffID, tokenHash, expiresAt); err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false, err
+	}
+	return invitation, true, nil
+}
+
 // Refactored to return both for the availability service
 func (r *StaffRepository) GetAvailabilityData(ctx context.Context, staffID string) ([]map[string]string, []string, error) {
 	// 1. Reuse your GetSchedule logic
@@ -276,33 +456,61 @@ func (r *StaffRepository) GetAvailabilityData(ctx context.Context, staffID strin
 
 // ------------------- INVITATIONS -------------------
 
-func (r *StaffRepository) GetPendingInvitationByToken(ctx context.Context, token string) (*StaffInvitation, error) {
-	query := `
-		SELECT id, invitation_expires_at
-		FROM staff
-		WHERE invitation_token = $1 AND status = 'PENDING_INVITATION'
-	`
-	var invite StaffInvitation
-	err := r.db.QueryRowContext(ctx, query, token).Scan(&invite.ID, &invite.ExpiresAt)
+// ConsumeInvitation atomically activates the linked users identity and marks
+// the matching invitation consumed. The caller must pass a token hash.
+func (r *StaffRepository) ConsumeInvitation(ctx context.Context, tokenHash, passwordHash string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &invite, nil
-}
+	defer rollbackTx(tx)
 
-func (r *StaffRepository) ActivateStaffPassword(ctx context.Context, id uuid.UUID, token string, passwordHash string) error {
-	query := `
-		UPDATE staff
-		SET password_hash = $1,
-		    status = 'ACTIVE',
-		    invitation_token = NULL,
-		    invitation_expires_at = NULL
-		WHERE id = $2
-		  AND invitation_token = $3
-		  AND status = 'PENDING_INVITATION'
-		  AND invitation_expires_at > NOW()
-	`
-	result, err := r.db.ExecContext(ctx, query, passwordHash, id, token)
+	var invitationID, userID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT invitation.id, staff.user_id
+		FROM staff_invitations AS invitation
+		JOIN staff ON staff.id = invitation.staff_id
+		JOIN users ON users.id = staff.user_id
+		WHERE invitation.token_hash = $1
+		  AND invitation.expires_at > NOW()
+		  AND invitation.consumed_at IS NULL
+		  AND invitation.revoked_at IS NULL
+		  AND users.account_status = 'PENDING_INVITATION'
+	`, tokenHash).Scan(&invitationID, &userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrInvalidInvitation
+	}
+	if err != nil {
+		return err
+	}
+	var lockedInvitationID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT id FROM staff_invitations
+		WHERE id = $1 AND token_hash = $2 AND expires_at > NOW()
+		  AND consumed_at IS NULL AND revoked_at IS NULL
+		FOR UPDATE
+	`, invitationID, tokenHash).Scan(&lockedInvitationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrInvalidInvitation
+	}
+	if err != nil {
+		return err
+	}
+	var accountStatus string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT account_status FROM users WHERE id = $1 FOR UPDATE
+	`, userID).Scan(&accountStatus); err != nil {
+		return err
+	}
+	if accountStatus != "PENDING_INVITATION" {
+		return ErrInvalidInvitation
+	}
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE users
+		SET password = $1, account_status = 'ACTIVE'
+		WHERE id = $2 AND account_status = 'PENDING_INVITATION'
+	`, passwordHash, userID)
 	if err != nil {
 		return err
 	}
@@ -313,5 +521,22 @@ func (r *StaffRepository) ActivateStaffPassword(ctx context.Context, id uuid.UUI
 	if rowsAffected != 1 {
 		return ErrInvalidInvitation
 	}
-	return nil
+
+	result, err = tx.ExecContext(ctx, `
+		UPDATE staff_invitations
+		SET consumed_at = NOW()
+		WHERE id = $1 AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()
+	`, invitationID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err = result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected != 1 {
+		return ErrInvalidInvitation
+	}
+
+	return tx.Commit()
 }

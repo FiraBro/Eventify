@@ -48,13 +48,13 @@ func (r *UserRepository) GetByEmail(email string) (*models.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
 	row := r.db.QueryRow(`
-		SELECT id, username, email, password, role
+		SELECT id, username, email, password, role, account_status
 		FROM users
 		WHERE LOWER(email) = $1 AND deleted_at IS NULL
 	`, email)
 
 	var u models.User
-	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role, &u.AccountStatus); err != nil {
 		return nil, err
 	}
 	return &u, nil
@@ -209,14 +209,14 @@ func (r *UserRepository) IsUserDeleted(id string) (bool, error) {
 // ----------------------------
 func (r *UserRepository) GetActiveByID(id string) (*models.User, error) {
 	row := r.db.QueryRow(`
-		SELECT id, username, email, role, deleted_at
+		SELECT id, username, email, role, deleted_at, account_status
 		FROM users
 		WHERE id = $1 AND deleted_at IS NULL
 	`, id)
 
 	var u models.User
 	var deletedAt sql.NullTime
-	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Role, &deletedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Role, &deletedAt, &u.AccountStatus); err != nil {
 		return nil, err
 	}
 

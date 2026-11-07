@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"log"
@@ -12,10 +13,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/FiraBro/local-go/internal/config"
 	"github.com/FiraBro/local-go/internal/models"
 	"github.com/FiraBro/local-go/internal/repositories"
+	"github.com/FiraBro/local-go/internal/utils"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -51,6 +54,19 @@ func GenerateSecureToken() string {
 	return hex.EncodeToString(b)
 }
 
+// GenerateStaffInvitationToken creates an opaque URL-safe token and its
+// SHA-256 digest. Only the digest should be persisted; the raw token is for
+// the invitation delivery path only.
+func GenerateStaffInvitationToken() (rawToken, tokenHash string, err error) {
+	entropy := make([]byte, 32)
+	if _, err := rand.Read(entropy); err != nil {
+		return "", "", err
+	}
+
+	rawToken = base64.RawURLEncoding.EncodeToString(entropy)
+	return rawToken, HashToken(rawToken), nil
+}
+
 // HashToken applies a high-entropy SHA-256 hashing digest over raw token sequences
 func HashToken(token string) string {
 	h := sha256.New()
@@ -73,6 +89,16 @@ func GenerateSecureOTP() (string, error) {
 }
 
 func (s *AuthService) ForgotPassword(email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if _, err := s.userRepo.GetByEmail(email); err != nil {
+		// Keep the public response identical for unknown addresses, but report
+		// infrastructure failures so the handler does not claim a reset was sent.
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+
 	otp, err := GenerateSecureOTP()
 	if err != nil {
 		return err
@@ -82,7 +108,7 @@ func (s *AuthService) ForgotPassword(email string) error {
 	rt := &models.ResetToken{
 		Email:     email,
 		TokenHash: hashedToken,
-		ExpiresAt: time.Now().Add(15 * time.Minute), // Tight 15 minute lifespan constraint
+		ExpiresAt: time.Now().Add(15 * time.Minute),
 		IsUsed:    false,
 	}
 
@@ -90,11 +116,12 @@ func (s *AuthService) ForgotPassword(email string) error {
 		return err
 	}
 
-	// Deliver the raw otp through your delivery infrastructure handle (e.g. SMTP/Email Client)
-	// Never log or save this cleartext string value.
+	if err := utils.SendOTPEmail(email, otp); err != nil {
+		_ = s.resetTokenRepo.Delete(email)
+		return err
+	}
 	return nil
 }
-
 func (s *AuthService) ResetPassword(email, otp, newPassword string) error {
 	// Re-hash the user input token to compare against the database record hash
 	targetHash := HashToken(otp)
@@ -147,6 +174,11 @@ func (s *AuthService) RefreshToken(token string) (string, string, error) {
 		_ = s.refreshRepo.Delete(token)
 		return "", "", errors.New("refresh token expired")
 	}
+	user, err := s.userRepo.GetActiveByID(rt.UserID)
+	if err != nil || user.AccountStatus != models.AccountStatusActive {
+		_ = s.refreshRepo.DeleteAllForUser(rt.UserID)
+		return "", "", errors.New("invalid refresh token")
+	}
 
 	// 4. Mark token as spent before creating replacements to prevent concurrent race conditions
 	rt.IsUsed = true
@@ -170,6 +202,7 @@ func (s *AuthService) RefreshToken(token string) (string, string, error) {
 	// 6. Sign your standard short-lived Access JWT matching original constraints
 	newAccessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": rt.UserID,
+		"role":    user.Role,
 		"exp":     time.Now().Add(72 * time.Hour).Unix(),
 	}).SignedString([]byte(config.JWTSecret))
 	if err != nil {
@@ -232,6 +265,9 @@ func (s *AuthService) Login(email, password string) (string, string, *models.Use
 	}
 
 	if err := CheckPassword(user.Password, password); err != nil {
+		return "", "", nil, errors.New("invalid email or password")
+	}
+	if user.AccountStatus != models.AccountStatusActive {
 		return "", "", nil, errors.New("invalid email or password")
 	}
 
@@ -439,37 +475,30 @@ func (s *AuthService) UpdateUser(user *models.User) error {
 }
 
 var (
-	ErrInvalidInvitation = errors.New("invalid invitation token")
-	ErrInvitationExpired = errors.New("invitation link has expired")
+	ErrInvalidInvitation = errors.New("invalid or expired invitation")
+	ErrInvitationExpired = ErrInvalidInvitation
+	ErrWeakPassword      = errors.New("password must contain at least 6 characters")
+	ErrPasswordTooLong   = errors.New("password exceeds the supported length")
 )
 
-// CompleteInvitationOnboarding orchestrates the logic check verification flow
+// CompleteInvitationOnboarding hashes the invitation token before storage
+// lookup, hashes the selected password, then consumes the invitation atomically.
 func (s *AuthService) CompleteInvitationOnboarding(ctx context.Context, token, plainPassword string) error {
 	if s.staffRepo == nil {
 		return errors.New("staff repository is not configured")
 	}
-
-	// 1. Retrieve the structural invitation details from repository layer
-	invite, err := s.staffRepo.GetPendingInvitationByToken(ctx, token)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrInvalidInvitation
-	} else if err != nil {
-		return err
+	if utf8.RuneCountInString(plainPassword) < 6 {
+		return ErrWeakPassword
 	}
-
-	// 2. Perform business clock expiry rule checking checks
-	if !invite.ExpiresAt.After(time.Now()) {
-		return ErrInvitationExpired
+	if len([]byte(plainPassword)) > 72 {
+		return ErrPasswordTooLong
 	}
-
-	// 3. Transform plain password text into safe crypto hashed format
-	hash, err := bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.DefaultCost)
+	hash, err := HashPassword(plainPassword)
 	if err != nil {
 		return err
 	}
 
-	// 4. Fire persistence update commands to finalize record states
-	if err := s.staffRepo.ActivateStaffPassword(ctx, invite.ID, token, string(hash)); err != nil {
+	if err := s.staffRepo.ConsumeInvitation(ctx, HashToken(token), hash); err != nil {
 		if errors.Is(err, repositories.ErrInvalidInvitation) {
 			return ErrInvalidInvitation
 		}

@@ -179,7 +179,7 @@ func run() error {
 	bookingService.SetReadCache(readCache)
 
 	// 7. Handlers
-	authHandler := handlers.NewAuthHandler(authService)
+	authHandler := handlers.NewAuthHandler(authService, staffService)
 	staffHandler := handlers.NewStaffHandler(staffService, availabilityService)
 	serviceHandler := handlers.NewServiceHandler(serviceService)
 	bookingHandler := handlers.NewBookingHandler(bookingService)
@@ -214,9 +214,6 @@ func run() error {
 	r.GET("/healthz", handlers.Healthz)
 	r.GET("/readyz", handlers.Readyz(dbConn, config.AppConfig.HealthCheckTimeout))
 	r.GET("/metrics", gin.WrapH(metrics.Handler()))
-
-	// Complete staff invitation onboarding route registered directly on root router
-	r.POST("/api/v1/auth/invitation/complete", authHandler.CompleteInvitation)
 
 	// 8b. API routes
 	api := r.Group(apiBasePath)

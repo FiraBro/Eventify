@@ -49,10 +49,24 @@ type Config struct {
 	SMTPPort string
 	SMTPUser string
 	SMTPPass string
+
+	BusinessName          string
+	StaffInvitationURL    string
+	StaffInvitationExpiry time.Duration
 }
 
 // ValidateConfig parses, maps, and rigorously tests environment parameters once at startup.
 func ValidateConfig() {
+	staffInvitationExpiryHours := 24
+	if raw := strings.TrimSpace(os.Getenv("STAFF_INVITATION_EXPIRY_HOURS")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 8760 {
+			fmt.Fprintln(os.Stderr, "CRITICAL CONFIGURATION ERROR: STAFF_INVITATION_EXPIRY_HOURS must be an integer from 1 to 8760")
+			os.Exit(1)
+		}
+		staffInvitationExpiryHours = parsed
+	}
+
 	for _, key := range []string{
 		"READ_HEADER_TIMEOUT",
 		"READ_TIMEOUT",
@@ -101,6 +115,10 @@ func ValidateConfig() {
 		SMTPPort: os.Getenv("SMTP_PORT"),
 		SMTPUser: os.Getenv("SMTP_USER"),
 		SMTPPass: os.Getenv("SMTP_PASS"),
+
+		BusinessName:          getEnv("BUSINESS_NAME", "Eventify"),
+		StaffInvitationURL:    strings.TrimSpace(os.Getenv("STAFF_INVITATION_URL")),
+		StaffInvitationExpiry: time.Duration(staffInvitationExpiryHours) * time.Hour,
 	}
 
 	// Pprof must never be enabled outside development.
@@ -122,7 +140,6 @@ func ValidateConfig() {
 			os.Exit(1)
 		}
 	}
-
 	origins := getEnv(
 		"CORS_ALLOWED_ORIGINS",
 		"http://localhost:3000,http://localhost:5173",
