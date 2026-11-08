@@ -1,6 +1,8 @@
 package middlewares
 
 import (
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -24,12 +26,14 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
+			slog.Warn("authentication failed", "reason", "authorization_missing", "path", c.Request.URL.Path)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization required"})
 			return
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
+			slog.Warn("authentication failed", "reason", "bearer_prefix_missing", "path", c.Request.URL.Path)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
 			return
 		}
@@ -43,12 +47,26 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 		})
 
 		if err != nil || !token.Valid {
+			reason := "invalid_token"
+			var validationErr *jwt.ValidationError
+			if errors.As(err, &validationErr) {
+				switch {
+				case validationErr.Errors&jwt.ValidationErrorExpired != 0:
+					reason = "expired_signature"
+				case validationErr.Errors&jwt.ValidationErrorSignatureInvalid != 0:
+					reason = "signature_invalid"
+				case validationErr.Errors&jwt.ValidationErrorClaimsInvalid != 0:
+					reason = "claims_invalid"
+				}
+			}
+			slog.Warn("authentication failed", "reason", reason, "path", c.Request.URL.Path, "error", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			return
 		}
 
 		// Optional: check token expiry
-		if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
+		if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now().UTC()) {
+			slog.Warn("authentication failed", "reason", "expired_signature", "user_id", claims.UserID, "path", c.Request.URL.Path)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
 			return
 		}
@@ -56,6 +74,7 @@ func AuthMiddleware(userRepo *repositories.UserRepository) gin.HandlerFunc {
 		// Fetch user from DB to validate soft deletion
 		user, err := userRepo.GetActiveByID(claims.UserID)
 		if err != nil || user.DeletedAt != nil || user.AccountStatus != models.AccountStatusActive {
+			slog.Warn("authentication failed", "reason", "user_inactive_or_missing", "user_id", claims.UserID, "path", c.Request.URL.Path, "error", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User no longer active"})
 			return
 		}

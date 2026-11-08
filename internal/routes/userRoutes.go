@@ -51,7 +51,7 @@ func UserRoutes(api *gin.RouterGroup, authHandler *handlers.AuthHandler, userRep
 	api.POST("/users", authMW, adminMW, authHandler.CreateUserHandler)      // POST /api/v1/users
 	api.PATCH("/users/:id", authMW, adminMW, authHandler.UpdateUserHandler) // PATCH /api/v1/users/:id
 	api.PATCH("/users/:id/role", authMW, adminMW, authHandler.UpdateUserRole)
-	api.DELETE("/users/:id", authMW, adminMW, authHandler.DeleteUser)
+	api.DELETE("/users/:id", authMW, adminMW, authHandler.AdminDeleteUser)
 
 	// Single user fetch (any authenticated user)
 	api.GET("/users/:id", authMW, authHandler.GetUserByID)

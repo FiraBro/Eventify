@@ -10,6 +10,20 @@ type RefreshTokenRepository struct {
 	db *sql.DB
 }
 
+// Consume atomically claims a refresh token. Only one concurrent request can
+// transition it from unused to used.
+func (r *RefreshTokenRepository) Consume(token string) (bool, error) {
+	result, err := r.db.Exec(`UPDATE refresh_tokens SET is_used = TRUE WHERE token = $1 AND is_used = FALSE`, token)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows == 1, nil
+}
+
 func NewRefreshTokenRepository(db *sql.DB) *RefreshTokenRepository {
 	return &RefreshTokenRepository{db: db}
 }

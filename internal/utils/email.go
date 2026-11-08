@@ -1,4 +1,3 @@
-
 package utils
 
 import (
@@ -194,9 +193,3 @@ func (SMTPMailer) SendStaffInvitation(
 
 	return nil
 }
-EOF
-
-gofmt -w internal/utils/email.go
-
-echo "=== REVIEW CHANGE ==="
-git diff -- internal/utils/email.go

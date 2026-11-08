@@ -445,6 +445,68 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	})
 }
 
+// AdminDeleteUser godoc
+// @Summary      Schedule a user's account for deletion
+// @Description  Soft-delete the user identified by the URL. Admin only.
+// @Tags         users
+// @Produce      json
+// @Param        Authorization  header  string  true  "Bearer <JWT_TOKEN>"
+// @Param        id             path    string  true  "User UUID"
+// @Success      200            {object} map[string]interface{}
+// @Failure      400            {object} map[string]interface{}
+// @Failure      401            {object} map[string]interface{}
+// @Failure      500            {object} map[string]interface{}
+// @Router       /users/{id} [delete]
+func (h *AuthHandler) AdminDeleteUser(c *gin.Context) {
+	actorID := c.GetString("user_id")
+	if actorID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	actorUUID, err := uuid.Parse(actorID)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Invalid authenticated user",
+		})
+		return
+	}
+
+	targetUUID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "A valid user ID is required",
+		})
+		return
+	}
+
+	if targetUUID == actorUUID {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Use the account deletion endpoint to delete your own account",
+		})
+		return
+	}
+
+	if err := h.authService.SoftDeleteUser(targetUUID.String()); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to delete user",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "User account has been scheduled for deletion.",
+	})
+}
+
 // ----------------------------
 // RESTORE USER
 // ----------------------------

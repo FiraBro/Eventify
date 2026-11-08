@@ -57,6 +57,9 @@ func (r *UserRepository) GetByEmail(email string) (*models.User, error) {
 	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role, &u.AccountStatus); err != nil {
 		return nil, err
 	}
+	// Keep role values canonical at the persistence boundary so callers and
+	// authorization middleware see the same value for ADMIN and admin.
+	u.Role = strings.ToLower(strings.TrimSpace(u.Role))
 	return &u, nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log"
+	"log/slog"
 	"math/big"
 	"strconv"
 	"strings"
@@ -108,7 +109,7 @@ func (s *AuthService) ForgotPassword(email string) error {
 	rt := &models.ResetToken{
 		Email:     email,
 		TokenHash: hashedToken,
-		ExpiresAt: time.Now().Add(15 * time.Minute),
+		ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
 		IsUsed:    false,
 	}
 
@@ -165,12 +166,11 @@ func (s *AuthService) RefreshToken(token string) (string, string, error) {
 
 	// 2. Fraud Replay Detection: If the token was already spent, trigger session eviction
 	if rt.IsUsed {
-		_ = s.refreshRepo.DeleteAllForUser(rt.UserID)
 		return "", "", errors.New("security alert: refresh token reuse detected")
 	}
 
 	// 3. Expiration checks
-	if rt.ExpiresAt.Before(time.Now()) {
+	if rt.ExpiresAt.Before(time.Now().UTC()) {
 		_ = s.refreshRepo.Delete(token)
 		return "", "", errors.New("refresh token expired")
 	}
@@ -181,9 +181,14 @@ func (s *AuthService) RefreshToken(token string) (string, string, error) {
 	}
 
 	// 4. Mark token as spent before creating replacements to prevent concurrent race conditions
-	rt.IsUsed = true
-	if err := s.refreshRepo.Update(rt); err != nil {
+	consumed, err := s.refreshRepo.Consume(token)
+	if err != nil {
 		return "", "", errors.New("failed to consume token securely")
+	}
+	if !consumed {
+		// Another request already rotated this token. Do not revoke the new
+		// token or other sessions; a concurrent retry is not proof of theft.
+		return "", "", errors.New("security alert: refresh token reuse detected")
 	}
 
 	// 5. Mint a secure, replacement opaque refresh token
@@ -191,7 +196,7 @@ func (s *AuthService) RefreshToken(token string) (string, string, error) {
 	newRt := &models.RefreshToken{
 		Token:     newRefreshTokenString,
 		UserID:    rt.UserID,
-		ExpiresAt: time.Now().Add(7 * 24 * time.Hour), // 7 days rolling validity
+		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour), // 7 days rolling validity
 		IsUsed:    false,
 		ParentTag: token,
 	}
@@ -203,7 +208,7 @@ func (s *AuthService) RefreshToken(token string) (string, string, error) {
 	newAccessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": rt.UserID,
 		"role":    user.Role,
-		"exp":     time.Now().Add(72 * time.Hour).Unix(),
+		"exp":     time.Now().UTC().Add(72 * time.Hour).Unix(),
 	}).SignedString([]byte(config.JWTSecret))
 	if err != nil {
 		return "", "", err
@@ -261,21 +266,29 @@ func (s *AuthService) Login(email, password string) (string, string, *models.Use
 
 	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
+		slog.Error("Database lookup failed during login", "error", err)
 		return "", "", nil, errors.New("invalid email or password")
 	}
 
 	if err := CheckPassword(user.Password, password); err != nil {
+		log.Printf("auth login rejected: reason=password_verification_failed user_id=%q", user.ID)
 		return "", "", nil, errors.New("invalid email or password")
 	}
-	if user.AccountStatus != models.AccountStatusActive {
+	if !strings.EqualFold(strings.TrimSpace(user.AccountStatus), models.AccountStatusActive) {
+		log.Printf("auth login rejected: reason=account_not_active user_id=%q account_status=%q", user.ID, user.AccountStatus)
 		return "", "", nil, errors.New("invalid email or password")
 	}
+
+	// Roles are stored as lowercase values by the application's role guards, but
+	// older/admin records may contain PostgreSQL enum-style uppercase values.
+	// Canonicalize before embedding the role in the token and returning the user.
+	user.Role = strings.ToLower(strings.TrimSpace(user.Role))
 
 	// Create access token
 	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID,
 		"role":    user.Role,
-		"exp":     time.Now().Add(72 * time.Hour).Unix(),
+		"exp":     time.Now().UTC().Add(72 * time.Hour).Unix(),
 	}).SignedString([]byte(config.JWTSecret))
 	if err != nil {
 		return "", "", nil, err
@@ -286,7 +299,7 @@ func (s *AuthService) Login(email, password string) (string, string, *models.Use
 	rt := &models.RefreshToken{
 		Token:     refreshToken,
 		UserID:    user.ID,
-		ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour),
 	}
 
 	if err := s.refreshRepo.Save(rt); err != nil {
