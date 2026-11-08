@@ -34,7 +34,7 @@ func NewStaffRepository(db *sql.DB) *StaffRepository {
 // ------------------- STAFF CRUD -------------------
 
 func (r *StaffRepository) GetAll(ctx context.Context) ([]models.Staff, error) {
-	query := `SELECT id, name, email, phone FROM staff ORDER BY name ASC`
+	query := `SELECT id, name, email, COALESCE(phone, '') FROM staff ORDER BY name ASC`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func mapStaffUniqueViolation(err error) error {
 }
 
 func (r *StaffRepository) GetByID(ctx context.Context, id string) (*models.Staff, error) {
-	query := `SELECT id, name, email, phone FROM staff WHERE id = $1`
+	query := `SELECT id, name, email, COALESCE(phone, '') FROM staff WHERE id = $1`
 	var s models.Staff
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&s.ID, &s.Name, &s.Email, &s.Phone,

@@ -36,12 +36,17 @@ func NewStaffHandler(ss *services.StaffService, as *services.AvailabilityService
 func (h *StaffHandler) ListStaff(c *gin.Context) {
 	staff, err := h.service.GetAll(c.Request.Context())
 	if err != nil {
+		slog.ErrorContext(
+			c.Request.Context(),
+			"failed to fetch staff list",
+			"error", err,
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch staff list"})
 		return
 	}
+
 	c.JSON(http.StatusOK, staff)
 }
-
 func (h *StaffHandler) Create(c *gin.Context) {
 	var req CreateStaffRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
