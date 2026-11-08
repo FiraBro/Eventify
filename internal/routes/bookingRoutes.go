@@ -15,6 +15,7 @@ func BookingRoutes(api *gin.RouterGroup, handler *handlers.BookingHandler, userR
 	// Authenticated routes (ownership / role checks happen in the service layer)
 	api.POST("/bookings", authMW, handler.Create)
 	api.GET("/bookings/my", authMW, handler.GetMine) // must be before /bookings/:id
+	api.GET("/bookings/staff", authMW, handler.GetStaffBookings)
 	api.GET("/bookings/:id", authMW, handler.GetByID)
 	api.PATCH("/bookings/:id", authMW, handler.Update)
 	api.DELETE("/bookings/:id", authMW, handler.Delete)

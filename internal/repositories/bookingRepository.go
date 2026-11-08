@@ -114,6 +114,28 @@ func (r *BookingRepository) GetByUserID(ctx context.Context, userID string) ([]m
 		`SELECT `+bookingListColumns+` FROM bookings b LEFT JOIN users u ON b.user_id = u.id LEFT JOIN LATERAL (SELECT st.id, st.name, st.email FROM staff st WHERE st.id = b.staff_id OR (NOT EXISTS (SELECT 1 FROM staff assigned WHERE assigned.id = b.staff_id) AND EXISTS (SELECT 1 FROM staff_services ss WHERE ss.staff_id = st.id AND ss.service_id = b.service_id)) ORDER BY CASE WHEN st.id = b.staff_id THEN 0 ELSE 1 END, st.id LIMIT 1) s ON TRUE WHERE b.user_id = $1 ORDER BY b.created_at DESC`, userID)
 }
 
+// GetStaffIDByUserID resolves an authenticated user to their staff record.
+func (r *BookingRepository) GetStaffIDByUserID(ctx context.Context, userID string) (string, error) {
+	var staffID string
+	err := r.db.QueryRowContext(ctx, `SELECT id::text FROM staff WHERE user_id = $1`, userID).Scan(&staffID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return staffID, err
+}
+
+// GetByStaffID returns bookings assigned to one staff record, optionally filtered by status.
+func (r *BookingRepository) GetByStaffID(ctx context.Context, staffID, status string) ([]models.Booking, error) {
+	query := `SELECT ` + bookingListColumns + ` FROM bookings b LEFT JOIN users u ON b.user_id = u.id LEFT JOIN LATERAL (SELECT st.id, st.name, st.email FROM staff st WHERE st.id = b.staff_id OR (NOT EXISTS (SELECT 1 FROM staff assigned WHERE assigned.id = b.staff_id) AND EXISTS (SELECT 1 FROM staff_services ss WHERE ss.staff_id = st.id AND ss.service_id = b.service_id)) ORDER BY CASE WHEN st.id = b.staff_id THEN 0 ELSE 1 END, st.id LIMIT 1) s ON TRUE WHERE b.staff_id = $1`
+	args := []any{staffID}
+	if status != "" {
+		query += ` AND b.status = $2`
+		args = append(args, status)
+	}
+	query += ` ORDER BY b.created_at DESC`
+	return r.queryList(ctx, query, args...)
+}
+
 // --------------------
 // GET BOOKING BY ID
 // --------------------

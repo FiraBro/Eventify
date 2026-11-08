@@ -26,6 +26,7 @@ var (
 )
 
 const roleAdmin = "admin"
+const roleStaff = "staff"
 
 const (
 	bookingPending   = "pending"
@@ -124,6 +125,21 @@ func (s *BookingService) GetAll(ctx context.Context, role, status string) ([]mod
 
 func (s *BookingService) GetMine(ctx context.Context, userID string) ([]models.Booking, error) {
 	return s.repo.GetByUserID(ctx, userID)
+}
+
+// GetStaffBookings only returns bookings assigned to the authenticated staff user's record.
+func (s *BookingService) GetStaffBookings(ctx context.Context, userID, role, status string) ([]models.Booking, error) {
+	if role != roleStaff {
+		return nil, ErrBookingForbidden
+	}
+	staffID, err := s.repo.GetStaffIDByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if staffID == "" {
+		return nil, ErrStaffNotFound
+	}
+	return s.repo.GetByStaffID(ctx, staffID, status)
 }
 
 func (s *BookingService) GetByID(ctx context.Context, id, userID, role string) (*models.Booking, error) {
