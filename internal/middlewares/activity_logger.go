@@ -2,9 +2,8 @@ package middlewares
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -41,23 +40,18 @@ func ActivityLogger(rec ActivityRecorder) gin.HandlerFunc {
 			IP:         c.ClientIP(),
 			DurationMs: int(time.Since(start).Milliseconds()),
 		}
-		if id := ctxString(c, "userID"); id != "" {
+		if id := ctxString(c, "user_id"); id != "" {
 			if _, err := uuid.Parse(id); err == nil {
 				entry.UserID = id
 			}
 		}
-		if d := c.GetString("log_details"); d != "" {
-			entry.Details = json.RawMessage(d)
+		// Persist before returning so completed requests are immediately auditable. Logging
+		// remains fail-open: a logging failure is reported, but does not change the response.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := rec.Record(ctx, entry); err != nil {
+			slog.Error("activity log could not be recorded", "method", entry.Method, "path", entry.Path, "error", err)
 		}
-
-		// write in the background so logging never slows down the response
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := rec.Record(ctx, entry); err != nil {
-				log.Printf("activity log: could not record %s %s: %v", entry.Method, entry.Path, err)
-			}
-		}()
 	}
 }
 

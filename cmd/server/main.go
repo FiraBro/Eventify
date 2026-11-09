@@ -217,6 +217,7 @@ func run() error {
 
 	// 8b. API routes
 	api := r.Group(apiBasePath)
+	api.Use(middlewares.ActivityLogger(logService))
 
 	routes.AuthRoutes(api, authHandler, userRepo)
 	routes.UserRoutes(api, authHandler, userRepo)
